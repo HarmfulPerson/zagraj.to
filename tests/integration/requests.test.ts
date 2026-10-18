@@ -1,0 +1,205 @@
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+
+import type { PrismaClient } from "@/generated/prisma/client";
+import { createPrismaClient } from "@/lib/db-client";
+import { generateEventCode } from "@/lib/event-code";
+import { addRequest, countGuestRequests, listGuestRequests, trackInputSchema, type TrackInput } from "@/lib/requests";
+
+const prisma = createPrismaClient();
+
+const GUEST_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const GUEST_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+const track = (id: string, extra: Partial<TrackInput> = {}): TrackInput =>
+  trackInputSchema.parse({ id, title: `Utwór ${id}`, artist: "Sanah", coverUrl: null, durationSec: 200, ...extra });
+
+async function createEvent(overrides: { status?: "DRAFT" | "LIVE" | "CLOSED"; requestsOpen?: boolean; maxRequestsPerGuest?: number } = {}) {
+  const dj = await prisma.user.create({
+    data: { email: `dj-${Math.random().toString(36).slice(2)}@example.com`, passwordHash: "x", displayName: "DJ" },
+  });
+  return prisma.event.create({
+    data: { djId: dj.id, name: "Wesele", code: generateEventCode(), status: "LIVE", ...overrides },
+  });
+}
+
+beforeEach(async () => {
+  await prisma.user.deleteMany();
+});
+
+afterAll(async () => {
+  await prisma.$disconnect();
+});
+
+describe("addRequest: new track", () => {
+  it("creates a PENDING request with the creator's vote", async () => {
+    const event = await createEvent();
+    const result = await addRequest({ code: event.code, guestId: GUEST_A, track: track("101") }, prisma);
+
+    expect(result).toMatchObject({
+      ok: true,
+      outcome: "CREATED",
+      usedRequests: 1,
+      maxRequests: 5,
+      request: { trackId: "101", title: "Utwór 101", artist: "Sanah", coverUrl: null, durationSec: 200, voteCount: 1 },
+    });
+    const stored = await prisma.request.findFirstOrThrow({ where: { eventId: event.id }, include: { votes: true } });
+    expect(stored.status).toBe("PENDING");
+    expect(stored.createdByGuestId).toBe(GUEST_A);
+    expect(stored.votes.map((vote) => vote.guestId)).toEqual([GUEST_A]);
+  });
+});
+
+describe("addRequest: track already on the list", () => {
+  it("adds a vote instead of a duplicate request", async () => {
+    const event = await createEvent();
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("101") }, prisma);
+    const result = await addRequest({ code: event.code, guestId: GUEST_B, track: track("101", { title: "Inny tytuł" }) }, prisma);
+
+    expect(result).toMatchObject({ ok: true, outcome: "VOTED", usedRequests: 0, request: { title: "Utwór 101", voteCount: 2 } });
+    expect(await prisma.request.count({ where: { eventId: event.id } })).toBe(1);
+    expect(await prisma.vote.count()).toBe(2);
+  });
+
+  it("does not vote twice for the same guest", async () => {
+    const event = await createEvent();
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("101") }, prisma);
+    await addRequest({ code: event.code, guestId: GUEST_B, track: track("101") }, prisma);
+
+    for (const guestId of [GUEST_A, GUEST_B]) {
+      const again = await addRequest({ code: event.code, guestId, track: track("101") }, prisma);
+      expect(again).toMatchObject({ ok: true, outcome: "ALREADY_VOTED", request: { voteCount: 2 } });
+    }
+    expect(await prisma.vote.count()).toBe(2);
+    expect(await prisma.request.count()).toBe(1);
+  });
+
+  it("keeps the same track separate between events", async () => {
+    const first = await createEvent();
+    const second = await createEvent();
+    await addRequest({ code: first.code, guestId: GUEST_A, track: track("101") }, prisma);
+    const result = await addRequest({ code: second.code, guestId: GUEST_A, track: track("101") }, prisma);
+    expect(result).toMatchObject({ ok: true, outcome: "CREATED" });
+  });
+});
+
+describe("addRequest: maxRequestsPerGuest", () => {
+  it("refuses a new track above the limit", async () => {
+    const event = await createEvent({ maxRequestsPerGuest: 2 });
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("1") }, prisma);
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("2") }, prisma);
+    const result = await addRequest({ code: event.code, guestId: GUEST_A, track: track("3") }, prisma);
+
+    expect(result).toEqual({ ok: false, reason: "LIMIT_REACHED", maxRequests: 2 });
+    expect(await prisma.request.count({ where: { eventId: event.id } })).toBe(2);
+    // Other guests keep their own limit.
+    expect(await addRequest({ code: event.code, guestId: GUEST_B, track: track("3") }, prisma)).toMatchObject({ outcome: "CREATED" });
+  });
+
+  it("lets a guest at the limit still vote for tracks already on the list", async () => {
+    const event = await createEvent({ maxRequestsPerGuest: 1 });
+    await addRequest({ code: event.code, guestId: GUEST_B, track: track("9") }, prisma);
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("1") }, prisma);
+
+    const vote = await addRequest({ code: event.code, guestId: GUEST_A, track: track("9") }, prisma);
+    expect(vote).toMatchObject({ ok: true, outcome: "VOTED", usedRequests: 1 });
+  });
+
+  it("does not count votes on existing tracks towards the limit", async () => {
+    const event = await createEvent({ maxRequestsPerGuest: 1 });
+    await addRequest({ code: event.code, guestId: GUEST_B, track: track("9") }, prisma);
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("9") }, prisma);
+
+    expect(await countGuestRequests(event.id, GUEST_A, prisma)).toBe(0);
+    expect(await addRequest({ code: event.code, guestId: GUEST_A, track: track("1") }, prisma)).toMatchObject({ outcome: "CREATED" });
+  });
+
+  it("does not let parallel taps of one guest exceed the limit", async () => {
+    const event = await createEvent({ maxRequestsPerGuest: 2 });
+    const results = await Promise.all(
+      ["1", "2", "3", "4"].map((id) => addRequest({ code: event.code, guestId: GUEST_A, track: track(id) }, prisma)),
+    );
+    expect(results.filter((result) => result.ok)).toHaveLength(2);
+    expect(await countGuestRequests(event.id, GUEST_A, prisma)).toBe(2);
+  });
+});
+
+describe("addRequest: event state", () => {
+  it.each(["DRAFT", "CLOSED"] as const)("refuses when the event is %s", async (status) => {
+    const event = await createEvent({ status });
+    const result = await addRequest({ code: event.code, guestId: GUEST_A, track: track("1") }, prisma);
+    expect(result).toEqual({ ok: false, reason: "EVENT_NOT_LIVE", status });
+    expect(await prisma.request.count()).toBe(0);
+  });
+
+  it("refuses when requests are closed, also for tracks already on the list", async () => {
+    const event = await createEvent();
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("1") }, prisma);
+    await prisma.event.update({ where: { id: event.id }, data: { requestsOpen: false } });
+
+    expect(await addRequest({ code: event.code, guestId: GUEST_B, track: track("2") }, prisma)).toEqual({ ok: false, reason: "REQUESTS_CLOSED" });
+    expect(await addRequest({ code: event.code, guestId: GUEST_B, track: track("1") }, prisma)).toEqual({ ok: false, reason: "REQUESTS_CLOSED" });
+    expect(await prisma.vote.count()).toBe(1);
+  });
+
+  it("returns NOT_FOUND for an unknown code", async () => {
+    expect(await addRequest({ code: "ZZZZZZ", guestId: GUEST_A, track: track("1") }, prisma)).toEqual({ ok: false, reason: "NOT_FOUND" });
+  });
+});
+
+describe("addRequest: two guests adding the same track at once", () => {
+  it("falls back to a vote when the insert hits the unique (eventId, trackId)", async () => {
+    const event = await createEvent();
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("101") }, prisma);
+
+    // Guest B's lookup ran before A's insert: it sees no request, then the insert collides.
+    let hidden = false;
+    const racingDb = new Proxy(prisma, {
+      get(target, prop, receiver) {
+        if (prop !== "request") return Reflect.get(target, prop, receiver);
+        return new Proxy(target.request, {
+          get(requestDelegate, method, r) {
+            if (method === "findUnique" && !hidden) {
+              hidden = true;
+              return async () => null;
+            }
+            return Reflect.get(requestDelegate, method, r);
+          },
+        });
+      },
+    }) as PrismaClient;
+
+    const result = await addRequest({ code: event.code, guestId: GUEST_B, track: track("101") }, racingDb);
+    expect(hidden).toBe(true);
+    expect(result).toMatchObject({ ok: true, outcome: "VOTED", usedRequests: 0, request: { voteCount: 2 } });
+    expect(await prisma.request.count()).toBe(1);
+  });
+
+  it("ends with one request and both votes when run concurrently", async () => {
+    const event = await createEvent();
+    const results = await Promise.all(
+      [GUEST_A, GUEST_B].map((guestId) => addRequest({ code: event.code, guestId, track: track("101") }, prisma)),
+    );
+    expect(results.map((result) => (result.ok ? result.outcome : result.reason)).sort()).toEqual(["CREATED", "VOTED"]);
+    expect(await prisma.request.count()).toBe(1);
+    expect(await prisma.vote.count()).toBe(2);
+  });
+});
+
+describe("listGuestRequests", () => {
+  it("lists the guest's own tracks newest first, without rejected ones", async () => {
+    const event = await createEvent();
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("1") }, prisma);
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("2") }, prisma);
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("3") }, prisma);
+    await addRequest({ code: event.code, guestId: GUEST_B, track: track("4") }, prisma);
+    for (const [trackId, minute] of [["1", 1], ["2", 2], ["3", 3]] as const) {
+      await prisma.request.updateMany({ where: { trackId }, data: { createdAt: new Date(Date.UTC(2026, 9, 24, 20, minute)) } });
+    }
+    await prisma.request.updateMany({ where: { trackId: "2" }, data: { status: "REJECTED" } });
+
+    const mine = await listGuestRequests(event.id, GUEST_A, prisma);
+    expect(mine.map((request) => request.trackId)).toEqual(["3", "1"]);
+    // Rejected tracks still count towards the limit.
+    expect(await countGuestRequests(event.id, GUEST_A, prisma)).toBe(3);
+  });
+});

@@ -6,7 +6,7 @@ import { CachedCatalog } from "@/lib/catalog/cached-catalog";
 import { DeezerCatalog } from "@/lib/catalog/deezer";
 import { CatalogError, MAX_SEARCH_RESULTS, type Track, type TrackCatalog } from "@/lib/catalog/types";
 import type { Clock } from "@/lib/clock";
-import { GUEST_ID_COOKIE_NAME } from "@/lib/guest";
+import { GUEST_ID_COOKIE_NAME, parseGuestId, readCookie } from "@/lib/guest";
 import { MemoryRateLimiter, type RateLimiter } from "@/lib/rate-limit";
 
 export const SEARCH_QUERY_MIN_LENGTH = 2;
@@ -28,30 +28,15 @@ export const searchQuerySchema = z.object({
 const MAX_KEY_LENGTH = 100;
 
 /**
- * Identifies who is searching, for rate limiting: the guest id cookie when present,
+ * Identifies who is searching, for rate limiting: the guest id cookie when it is a valid server-issued UUID,
  * otherwise the client IP (first `x-forwarded-for` entry), otherwise a shared "anonymous" bucket.
  */
 export function searchRateLimitKey(request: Request): string {
-  const guestId = readCookie(request.headers.get("cookie"), GUEST_ID_COOKIE_NAME);
-  if (guestId) return `guest:${guestId.slice(0, MAX_KEY_LENGTH)}`;
+  const guestId = parseGuestId(readCookie(request.headers.get("cookie"), GUEST_ID_COOKIE_NAME));
+  if (guestId) return `guest:${guestId}`;
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip")?.trim();
   if (ip) return `ip:${ip.slice(0, MAX_KEY_LENGTH)}`;
   return "anonymous";
-}
-
-function readCookie(header: string | null, name: string): string | undefined {
-  if (!header) return undefined;
-  for (const part of header.split(";")) {
-    const index = part.indexOf("=");
-    if (index === -1 || part.slice(0, index).trim() !== name) continue;
-    const raw = part.slice(index + 1).trim();
-    try {
-      return decodeURIComponent(raw) || undefined;
-    } catch {
-      return raw || undefined;
-    }
-  }
-  return undefined;
 }
 
 export type SearchDeps = { catalog: TrackCatalog; rateLimiter: RateLimiter };

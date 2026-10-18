@@ -12,7 +12,10 @@ const deezerBody = (count: number) => ({
   })),
 });
 
-function searchRequest(q: string | null, headers: Record<string, string> = { cookie: "guestId=guest-1" }) {
+const GUEST_1 = "11111111-1111-4111-8111-111111111111";
+const GUEST_2 = "22222222-2222-4222-8222-222222222222";
+
+function searchRequest(q: string | null, headers: Record<string, string> = { cookie: `guestId=${GUEST_1}` }) {
   const url = new URL("http://localhost/api/search");
   if (q !== null) url.searchParams.set("q", q);
   return new Request(url, { headers });
@@ -71,7 +74,7 @@ describe("GET /api/search", () => {
     expect(res.headers.get("Retry-After")).toBe("50");
     expect(await res.json()).toEqual({ error: "RATE_LIMITED", message: "Za dużo wyszukiwań. Odczekaj chwilę i spróbuj ponownie." });
     // Another guest is not affected; the first one is unblocked after a minute.
-    expect((await GET(searchRequest("sanah", { cookie: "guestId=guest-2" }))).status).toBe(200);
+    expect((await GET(searchRequest("sanah", { cookie: `guestId=${GUEST_2}` }))).status).toBe(200);
     now = 60_000;
     expect((await GET(searchRequest("sanah"))).status).toBe(200);
   });
@@ -114,7 +117,12 @@ describe("searchRateLimitKey", () => {
   const req = (headers: Record<string, string>) => new Request("http://localhost/api/search", { headers });
 
   it("prefers the guestId cookie", () => {
-    expect(searchRateLimitKey(req({ cookie: "a=1; guestId=abc-123", "x-forwarded-for": "1.2.3.4" }))).toBe("guest:abc-123");
+    expect(searchRateLimitKey(req({ cookie: `a=1; guestId=${GUEST_1}`, "x-forwarded-for": "1.2.3.4" }))).toBe(`guest:${GUEST_1}`);
+  });
+
+  it("ignores a guestId that is not a server-issued UUID", () => {
+    expect(searchRateLimitKey(req({ cookie: "guestId=abc-123", "x-forwarded-for": "1.2.3.4" }))).toBe("ip:1.2.3.4");
+    expect(searchRateLimitKey(req({ cookie: `guestId=${GUEST_1}x` }))).toBe("anonymous");
   });
 
   it("falls back to the client IP, then to a shared bucket", () => {
