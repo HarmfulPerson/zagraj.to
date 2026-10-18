@@ -5,7 +5,8 @@ import { GuestEventLive } from "@/components/guest/GuestEventLive";
 import { ClockIcon, GuestMessage, MoonIcon } from "@/components/guest/GuestMessage";
 import { isValidEventCode, normalizeEventCode } from "@/lib/event-code";
 import { GUEST_ID_COOKIE_NAME, parseGuestId } from "@/lib/guest";
-import { countGuestRequests, findGuestEvent, listGuestRequests } from "@/lib/requests";
+import { buildGuestList, loadGuestListRows } from "@/lib/guest-list";
+import { countGuestRequests, findGuestEvent } from "@/lib/requests";
 
 // Rendered per request and allowed to block: the event lookup decides between the page and a real 404
 // before anything streams. The guest id cookie is issued by proxy.ts.
@@ -32,18 +33,22 @@ export default async function GuestEventPage({ params }: PageProps<"/e/[code]">)
   }
 
   const guestId = parseGuestId((await cookies()).get(GUEST_ID_COOKIE_NAME)?.value);
-  const [mine, used] = guestId
-    ? await Promise.all([listGuestRequests(event.id, guestId), countGuestRequests(event.id, guestId)])
-    : [[], 0];
+  const [rows, used] = await Promise.all([
+    loadGuestListRows(event.id, guestId),
+    guestId ? countGuestRequests(event.id, guestId) : 0,
+  ]);
+  const initialList = {
+    event: { status: event.status, requestsOpen: event.requestsOpen },
+    ...buildGuestList(rows, guestId),
+  };
 
   return (
     <GuestEventLive
       code={event.code}
       name={event.name}
-      requestsOpen={event.requestsOpen}
       maxRequests={event.maxRequestsPerGuest}
       initialUsed={used}
-      initialMine={mine}
+      initialList={initialList}
     />
   );
 }

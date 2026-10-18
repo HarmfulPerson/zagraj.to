@@ -82,6 +82,49 @@ describe("addRequest: track already on the list", () => {
   });
 });
 
+describe("addRequest: track the DJ rejected", () => {
+  it("answers TRACK_UNAVAILABLE without a vote or a new request, for any guest", async () => {
+    const event = await createEvent({ maxRequestsPerGuest: 1 });
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("101") }, prisma);
+    await prisma.request.updateMany({ where: { eventId: event.id }, data: { status: "REJECTED" } });
+
+    for (const guestId of [GUEST_A, GUEST_B]) {
+      expect(await addRequest({ code: event.code, guestId, track: track("101") }, prisma)).toEqual({
+        ok: false,
+        reason: "TRACK_UNAVAILABLE",
+      });
+    }
+    expect(await prisma.request.count({ where: { eventId: event.id } })).toBe(1);
+    expect(await prisma.vote.count()).toBe(1);
+  });
+
+  it("also when the rejected track is found only after a racing insert", async () => {
+    const event = await createEvent();
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("101") }, prisma);
+    await prisma.request.updateMany({ where: { eventId: event.id }, data: { status: "REJECTED" } });
+    let hidden = false;
+    const racingDb = new Proxy(prisma, {
+      get(target, prop, receiver) {
+        if (prop !== "request") return Reflect.get(target, prop, receiver);
+        return new Proxy(target.request, {
+          get(requestDelegate, method, r) {
+            if (method === "findUnique" && !hidden) {
+              hidden = true;
+              return async () => null;
+            }
+            return Reflect.get(requestDelegate, method, r);
+          },
+        });
+      },
+    }) as PrismaClient;
+    expect(await addRequest({ code: event.code, guestId: GUEST_B, track: track("101") }, racingDb)).toEqual({
+      ok: false,
+      reason: "TRACK_UNAVAILABLE",
+    });
+    expect(await prisma.vote.count()).toBe(1);
+  });
+});
+
 describe("addRequest: maxRequestsPerGuest", () => {
   it("refuses a new track above the limit", async () => {
     const event = await createEvent({ maxRequestsPerGuest: 2 });
@@ -111,6 +154,28 @@ describe("addRequest: maxRequestsPerGuest", () => {
 
     expect(await countGuestRequests(event.id, GUEST_A, prisma)).toBe(0);
     expect(await addRequest({ code: event.code, guestId: GUEST_A, track: track("1") }, prisma)).toMatchObject({ outcome: "CREATED" });
+  });
+
+  it("frees the slot of a rejected track, but not of accepted or played ones", async () => {
+    const event = await createEvent({ maxRequestsPerGuest: 3 });
+    for (const id of ["1", "2", "3"]) await addRequest({ code: event.code, guestId: GUEST_A, track: track(id) }, prisma);
+    await prisma.request.updateMany({ where: { trackId: "1" }, data: { status: "ACCEPTED" } });
+    await prisma.request.updateMany({ where: { trackId: "2" }, data: { status: "PLAYED", playedAt: new Date() } });
+    expect(await addRequest({ code: event.code, guestId: GUEST_A, track: track("4") }, prisma)).toEqual({
+      ok: false,
+      reason: "LIMIT_REACHED",
+      maxRequests: 3,
+    });
+
+    await prisma.request.updateMany({ where: { trackId: "3" }, data: { status: "REJECTED" } });
+    expect(await countGuestRequests(event.id, GUEST_A, prisma)).toBe(2);
+    expect(await addRequest({ code: event.code, guestId: GUEST_A, track: track("4") }, prisma)).toMatchObject({
+      ok: true,
+      outcome: "CREATED",
+      usedRequests: 3,
+      maxRequests: 3,
+    });
+    expect(await addRequest({ code: event.code, guestId: GUEST_A, track: track("5") }, prisma)).toMatchObject({ reason: "LIMIT_REACHED" });
   });
 
   it("does not let parallel taps of one guest exceed the limit", async () => {
@@ -199,7 +264,7 @@ describe("listGuestRequests", () => {
 
     const mine = await listGuestRequests(event.id, GUEST_A, prisma);
     expect(mine.map((request) => request.trackId)).toEqual(["3", "1"]);
-    // Rejected tracks still count towards the limit.
-    expect(await countGuestRequests(event.id, GUEST_A, prisma)).toBe(3);
+    // Rejected tracks do not count towards the limit (the counter must not reveal a rejection).
+    expect(await countGuestRequests(event.id, GUEST_A, prisma)).toBe(2);
   });
 });

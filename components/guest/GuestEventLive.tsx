@@ -2,18 +2,25 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import useSWR from "swr";
 
 import { Brand } from "@/components/guest/Brand";
+import { GuestRequestList } from "@/components/guest/GuestRequestList";
+import { Cover, TrackText } from "@/components/guest/TrackParts";
 import type { Track } from "@/lib/catalog/types";
+import type { GuestList, GuestListItem } from "@/lib/guest-list";
 import type { AddRequestOutcome, GuestRequest } from "@/lib/requests";
 
 export const SEARCH_DEBOUNCE_MS = 300;
 const MIN_QUERY_LENGTH = 2;
 const NOTICE_TIMEOUT_MS = 4500;
+/** The wish list is refreshed this often (SPEC: polling every 3 s, SSE/WebSockets after MVP). */
+export const LIST_REFRESH_MS = 3000;
 
 const OFFLINE_MESSAGE = "Brak połączenia z internetem. Sprawdź zasięg i spróbuj ponownie.";
 const SEARCH_FAILED_MESSAGE = "Nie udało się wyszukać utworów. Spróbuj ponownie za chwilę.";
 const ADD_FAILED_MESSAGE = "Nie udało się dodać utworu. Spróbuj ponownie.";
+const VOTE_FAILED_MESSAGE = "Nie udało się zapisać głosu. Spróbuj ponownie.";
 
 type SearchResult = { query: string; tracks: Track[]; error: string | null };
 type Notice = { id: number; kind: "success" | "info" | "error"; text: string };
@@ -23,15 +30,32 @@ type TrackState = "pending" | "added" | "voted";
 type Props = {
   code: string;
   name: string;
-  requestsOpen: boolean;
   maxRequests: number;
   initialUsed: number;
-  initialMine: GuestRequest[];
+  initialList: GuestList;
 };
 
-function formatDuration(sec: number | null): string | null {
-  if (sec === null || sec <= 0) return null;
-  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+type VoteResponse = { votes: number; votedByMe: boolean };
+
+/** A failed API call with the HTTP status and the (Polish) message from the response. */
+class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+async function fetchList(url: string): Promise<GuestList> {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new ApiError(response.status, await errorMessage(response, "Nie udało się odświeżyć listy."));
+  return (await response.json()) as GuestList;
+}
+
+/** Applies `update` to one request in the queue (votes only change there; played tracks have no hearts). */
+function patchItem(list: GuestList, id: string, update: (item: GuestListItem) => GuestListItem): GuestList {
+  return { ...list, queue: list.queue.map((item) => (item.id === id ? update(item) : item)) };
 }
 
 async function errorMessage(response: Response, fallback: string): Promise<string> {
@@ -40,23 +64,39 @@ async function errorMessage(response: Response, fallback: string): Promise<strin
   return fallback;
 }
 
-export function GuestEventLive({ code, name, requestsOpen, maxRequests, initialUsed, initialMine }: Props) {
+export function GuestEventLive({ code, name, maxRequests, initialUsed, initialList }: Props) {
   const router = useRouter();
+  const listKey = `/api/events/${code}/requests`;
+  const {
+    data: list = initialList,
+    error: listError,
+    mutate: mutateList,
+  } = useSWR(listKey, fetchList, {
+    fallbackData: initialList,
+    refreshInterval: LIST_REFRESH_MS,
+    revalidateOnFocus: true,
+    keepPreviousData: true,
+  });
+  const pendingVotes = useRef(new Set<string>());
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<SearchResult | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   const [trackStates, setTrackStates] = useState<Record<string, TrackState>>({});
   const [used, setUsed] = useState(initialUsed);
-  const [mine, setMine] = useState(initialMine);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [closedMessage, setClosedMessage] = useState<string | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchBarRef = useRef<HTMLDivElement>(null);
 
   const trimmed = query.trim();
   const searching = trimmed.length >= MIN_QUERY_LENGTH;
-  const canAdd = requestsOpen && closedMessage === null;
+  const canAdd = list.event.requestsOpen;
+  const eventStatus = list.event.status;
+
+  // The DJ closed the party (or the event is otherwise no longer LIVE): re-render the page with its message.
+  useEffect(() => {
+    if (eventStatus !== "LIVE") router.refresh();
+  }, [eventStatus, router]);
 
   // Debounced search: waits 300 ms after the last keystroke; a newer query aborts the older request.
   useEffect(() => {
@@ -118,9 +158,9 @@ export function GuestEventLive({ code, name, requestsOpen, maxRequests, initialU
     if (response.ok) {
       const body = (await response.json()) as { outcome: AddRequestOutcome; request: GuestRequest; usedRequests: number };
       setUsed(body.usedRequests);
+      void mutateList();
       if (body.outcome === "CREATED") {
         setTrackStates((states) => ({ ...states, [track.id]: "added" }));
-        setMine((list) => [body.request, ...list.filter((item) => item.id !== body.request.id)]);
         show("success", `Dodano „${body.request.title}”. DJ już to widzi!`);
       } else {
         setTrackStates((states) => ({ ...states, [track.id]: "voted" }));
@@ -137,19 +177,54 @@ export function GuestEventLive({ code, name, requestsOpen, maxRequests, initialU
     reset();
     const message = await errorMessage(response, ADD_FAILED_MESSAGE);
     if (response.status === 429) setUsed((current) => Math.max(current, maxRequests));
-    if (response.status === 403) {
-      setClosedMessage(message);
-      router.refresh();
-    }
+    // Requests closed or the party ended meanwhile: the fresh list switches to the banner or the page to its message.
+    if (response.status === 403) void mutateList();
     show("error", message);
   }
 
-  const mineIds = new Set(mine.map((item) => item.trackId));
+  /** Optimistic like/unlike: the heart and counter change at once and roll back if the server refuses. */
+  async function toggleVote(item: GuestListItem) {
+    if (pendingVotes.current.has(item.id)) return;
+    pendingVotes.current.add(item.id);
+    const like = !item.votedByMe;
+    const vote = async (current: GuestList | undefined): Promise<GuestList> => {
+      const response = await fetch(`/api/requests/${item.id}/vote`, {
+        method: like ? "POST" : "DELETE",
+        headers: { "content-type": "application/json" },
+      });
+      if (!response.ok) throw new ApiError(response.status, await errorMessage(response, VOTE_FAILED_MESSAGE));
+      const result = (await response.json()) as VoteResponse;
+      return patchItem(current ?? list, item.id, (it) => ({ ...it, votes: result.votes, votedByMe: result.votedByMe }));
+    };
+    try {
+      await mutateList(vote, {
+        optimisticData: (current) =>
+          patchItem(current ?? list, item.id, (it) =>
+            it.votedByMe === like ? it : { ...it, votedByMe: like, votes: Math.max(0, it.votes + (like ? 1 : -1)) },
+          ),
+        rollbackOnError: true,
+        revalidate: false,
+      });
+    } catch (error) {
+      const status = error instanceof ApiError ? error.status : 0;
+      show("error", error instanceof ApiError ? error.message : OFFLINE_MESSAGE);
+      // The request was rejected, played or the party ended meanwhile: fetch the current list (and page).
+      if (status === 404 || status === 409) void mutateList();
+      if (status === 403) router.refresh();
+    } finally {
+      pendingVotes.current.delete(item.id);
+    }
+  }
+
+  const mineIds = new Set([...list.queue, ...list.played].filter((item) => item.mine).map((item) => item.trackId));
   const stateOf = (track: Track): TrackState | undefined => trackStates[track.id] ?? (mineIds.has(track.id) ? "added" : undefined);
   const limitReached = used >= maxRequests;
   const remaining = Math.max(0, maxRequests - used);
   const loading = searching && result?.query !== trimmed;
   const shownResult = searching ? result : null;
+  const requestList = (
+    <GuestRequestList list={list} stale={listError !== undefined} requestsOpen={canAdd} onToggleVote={toggleVote} />
+  );
 
   return (
     <main className="mx-auto flex w-full max-w-lg flex-1 flex-col px-4 pt-5 pb-32">
@@ -164,7 +239,11 @@ export function GuestEventLive({ code, name, requestsOpen, maxRequests, initialU
         <h1 data-testid="guest-event-name" className="mt-5 text-2xl leading-tight font-bold tracking-tight break-words text-white">
           {name}
         </h1>
-        <p className="mt-1.5 text-base text-zinc-300">Zaproponuj piosenkę, a DJ zobaczy ją na swojej liście.</p>
+        <p className="mt-1.5 text-base text-zinc-300">
+          {canAdd
+            ? "Zaproponuj piosenkę albo polub propozycje innych gości."
+            : "Polub utwory, które chcesz usłyszeć. DJ widzi, czego chce sala."}
+        </p>
 
         {canAdd ? (
           <div className="mt-4 rounded-2xl bg-zinc-900 px-4 py-3 ring-1 ring-zinc-800" data-testid="guest-usage">
@@ -195,8 +274,8 @@ export function GuestEventLive({ code, name, requestsOpen, maxRequests, initialU
           </div>
         ) : (
           <div role="status" data-testid="guest-requests-closed" className="mt-4 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-100 ring-1 ring-amber-400/30">
-            <p className="font-semibold">{closedMessage ?? "DJ chwilowo nie przyjmuje nowych życzeń."}</p>
-            <p className="mt-0.5 text-amber-100/80">Zajrzyj tu za chwilę.</p>
+            <p className="font-semibold">DJ chwilowo nie przyjmuje nowych życzeń.</p>
+            <p className="mt-0.5 text-amber-100/80">Możesz dalej lajkować utwory z listy.</p>
           </div>
         )}
       </header>
@@ -226,6 +305,7 @@ export function GuestEventLive({ code, name, requestsOpen, maxRequests, initialU
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   // Bring the search bar to the top, so results are not hidden behind the phone keyboard.
+                  onBlur={() => setSearchFocused(false)}
                   onFocus={() => {
                     setSearchFocused(true);
                     requestAnimationFrame(() => searchBarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -254,13 +334,14 @@ export function GuestEventLive({ code, name, requestsOpen, maxRequests, initialU
             </form>
           </div>
 
-          <section aria-label="Wyniki wyszukiwania" aria-busy={loading} className={`mt-1 ${searching || searchFocused ? "min-h-dvh" : ""}`}>
+          {/* While focused or searching, the area is at least a screen tall, so the search bar can scroll to the top. */}
+          <section aria-label="Wyniki wyszukiwania" aria-busy={loading} className={searching || searchFocused ? "mt-1 min-h-dvh" : ""}>
             {!searching ? (
               <>
                 {trimmed.length > 0 ? (
                   <p className="px-1 py-3 text-sm text-zinc-400">Wpisz co najmniej {MIN_QUERY_LENGTH} znaki.</p>
                 ) : null}
-                <MyRequests mine={mine} />
+                {requestList}
               </>
             ) : loading && !shownResult?.tracks.length ? (
               <ResultsSkeleton />
@@ -296,7 +377,7 @@ export function GuestEventLive({ code, name, requestsOpen, maxRequests, initialU
         </>
       ) : null}
 
-      {!canAdd ? <MyRequests mine={mine} /> : null}
+      {!canAdd ? requestList : null}
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div aria-live="polite" role="status" className="w-full max-w-lg">
@@ -336,37 +417,6 @@ export function GuestEventLive({ code, name, requestsOpen, maxRequests, initialU
         </div>
       </div>
     </main>
-  );
-}
-
-function Cover({ url }: { url: string | null }) {
-  return (
-    <div className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-zinc-800 text-zinc-500">
-      {url ? (
-        // Deezer covers are small fixed-size thumbnails; next/image optimisation would only add latency here.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" width={56} height={56} loading="lazy" decoding="async" className="size-full object-cover" />
-      ) : (
-        <svg aria-hidden viewBox="0 0 24 24" className="size-6" fill="currentColor">
-          <path d="M9 17.5a2.5 2.5 0 1 1-2-2.45V5.6a1 1 0 0 1 .76-.97l9-2.25A1 1 0 0 1 18 3.35v11.15a2.5 2.5 0 1 1-2-2.45V6.03l-7 1.75z" />
-        </svg>
-      )}
-    </div>
-  );
-}
-
-function TrackText({ title, artist, durationSec }: { title: string; artist: string; durationSec: number | null }) {
-  const duration = formatDuration(durationSec);
-  return (
-    <div className="min-w-0 flex-1">
-      <p className="truncate text-[0.95rem] font-semibold text-white" title={title}>
-        {title}
-      </p>
-      <p className="truncate text-sm text-zinc-400">
-        {artist}
-        {duration ? <span className="text-zinc-500"> · {duration}</span> : null}
-      </p>
-    </div>
   );
 }
 
@@ -415,30 +465,5 @@ function ResultsSkeleton() {
         </li>
       ))}
     </ul>
-  );
-}
-
-function MyRequests({ mine }: { mine: GuestRequest[] }) {
-  return (
-    <section aria-labelledby="mine-heading" className="mt-5" data-testid="guest-mine">
-      <h2 id="mine-heading" className="text-sm font-semibold tracking-wide text-zinc-400 uppercase">
-        Dodane przez Ciebie
-      </h2>
-      {mine.length === 0 ? (
-        <div className="mt-3 rounded-2xl border border-dashed border-zinc-800 px-5 py-8 text-center">
-          <p className="text-base font-medium text-zinc-200">Jeszcze nic nie dodano</p>
-          <p className="mt-1 text-sm text-zinc-400">Wpisz tytuł albo wykonawcę, np. „sanah” lub „Dancing Queen”.</p>
-        </div>
-      ) : (
-        <ul className="mt-2 divide-y divide-zinc-800/70">
-          {mine.map((request) => (
-            <li key={request.id} className="flex items-center gap-3 py-2.5">
-              <Cover url={request.coverUrl} />
-              <TrackText title={request.title} artist={request.artist} durationSec={request.durationSec} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }

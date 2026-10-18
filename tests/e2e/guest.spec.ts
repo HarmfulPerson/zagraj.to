@@ -1,44 +1,6 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-// The guest page talks to /api/search; every test mocks it in the browser, so Deezer is never called.
-const TRACKS = [
-  { id: "9001", title: "Szampan", artist: "sanah", coverUrl: null, durationSec: 200 },
-  { id: "9002", title: "Dancing Queen", artist: "ABBA", coverUrl: null, durationSec: 231 },
-  { id: "9003", title: "Ona tańczy dla mnie", artist: "Weekend", coverUrl: null, durationSec: 215 },
-];
-
-const PHONE = { viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true, locale: "pl-PL" };
-
-async function registerDj(page: Page) {
-  await page.goto("/rejestracja");
-  await page.getByLabel("E-mail").fill(`dj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`);
-  await page.getByLabel("Nazwa wyświetlana").fill("DJ Gość");
-  await page.getByLabel("Hasło").fill("tajnehaslo123");
-  await page.getByRole("button", { name: "Załóż konto" }).click();
-  await expect(page).toHaveURL(/\/panel$/);
-}
-
-/** Creates an event as the logged-in DJ and applies status actions; returns its code. */
-async function createEvent(page: Page, name: string, maxRequestsPerGuest: number, actions: ("start" | "close")[]) {
-  const res = await page.request.post("/api/events", { data: { name, maxRequestsPerGuest } });
-  expect(res.status()).toBe(201);
-  const { event } = (await res.json()) as { event: { id: string; code: string } };
-  for (const action of actions) {
-    expect((await page.request.post(`/api/events/${event.id}/status`, { data: { action } })).status()).toBe(200);
-  }
-  return event.code;
-}
-
-async function guestPage(browser: Browser, searches: string[] = []) {
-  const context = await browser.newContext(PHONE);
-  const page = await context.newPage();
-  await page.route("**/api/search*", async (route) => {
-    const q = new URL(route.request().url()).searchParams.get("q") ?? "";
-    searches.push(q);
-    await route.fulfill({ json: { tracks: q.includes("brak") ? [] : TRACKS } });
-  });
-  return { context, page };
-}
+import { createEvent, guestPage, PHONE, registerDj, TRACKS } from "./guest-helpers";
 
 test("guest searches, adds a track, hits the limit; another guest's add becomes a vote", async ({ page, browser }) => {
   await registerDj(page);
@@ -75,11 +37,12 @@ test("guest searches, adds a track, hits the limit; another guest's add becomes 
   await expect(a.getByTestId("guest-notice")).toContainText("Wykorzystano limit życzeń (1)");
   await expect(a.getByTestId("search-result").filter({ hasText: "Dancing Queen" }).getByRole("button", { name: /Dodaj/ })).toBeVisible();
 
-  // The added track is listed after clearing the search, also after a reload.
+  // The added track is on the wish list (marked "Twoje") after clearing the search, also after a reload.
   await a.getByLabel("Wyczyść wyszukiwanie").click();
-  await expect(a.getByTestId("guest-mine")).toContainText("Szampan");
+  const mineRow = a.getByTestId("guest-request").filter({ hasText: "Szampan" });
+  await expect(mineRow).toContainText("Twoje");
   await a.reload();
-  await expect(a.getByTestId("guest-mine")).toContainText("Szampan");
+  await expect(mineRow).toContainText("Twoje");
   await expect(a.getByTestId("guest-usage")).toContainText("1 z 1");
 
   // Guest B adds the same track: no duplicate, just a vote (and B's own limit is untouched).
@@ -90,7 +53,11 @@ test("guest searches, adds a track, hits the limit; another guest's add becomes 
   await b.getByRole("button", { name: "Dodaj: Szampan – sanah" }).click();
   await expect(b.getByTestId("guest-notice")).toContainText("już jest na liście. Dodaliśmy Twój głos.");
   await expect(b.getByTestId("guest-usage")).toContainText("0 z 1");
-  await expect(b.getByTestId("guest-mine")).toHaveCount(0);
+  await b.getByLabel("Wyczyść wyszukiwanie").click();
+  const rowForB = b.getByTestId("guest-request").filter({ hasText: "Szampan" });
+  await expect(rowForB).toBeVisible();
+  await expect(rowForB).not.toContainText("Twoje");
+  await expect(rowForB.getByRole("button", { name: "Polub: Szampan – sanah" })).toHaveAttribute("aria-pressed", "true");
 
   // Empty results.
   await b.getByLabel("Szukaj utworu").fill("brak wyników");

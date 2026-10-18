@@ -105,6 +105,8 @@ export type AddRequestResult =
   | { ok: false; reason: "NOT_FOUND" }
   | { ok: false; reason: "EVENT_NOT_LIVE"; status: EventStatus }
   | { ok: false; reason: "REQUESTS_CLOSED" }
+  /** The DJ rejected this track. Answered neutrally, without a vote, so guests cannot learn what was rejected. */
+  | { ok: false; reason: "TRACK_UNAVAILABLE" }
   | { ok: false; reason: "LIMIT_REACHED"; maxRequests: number };
 
 function isUniqueViolation(error: unknown): boolean {
@@ -121,9 +123,12 @@ export function findGuestEvent(code: string, db: PrismaClient = prisma) {
 
 export type GuestEvent = NonNullable<Awaited<ReturnType<typeof findGuestEvent>>>;
 
-/** How many requests (new tracks) the guest has added to the event. Votes on existing tracks do not count. */
+/**
+ * How many requests (new tracks) of the guest count towards `maxRequestsPerGuest`. Votes on existing tracks do not count,
+ * and neither do tracks the DJ rejected: the slot is freed, and the "X z Y" counter cannot reveal a rejection.
+ */
 export function countGuestRequests(eventId: string, guestId: string, db: PrismaClient | Prisma.TransactionClient = prisma) {
-  return db.request.count({ where: { eventId, createdByGuestId: guestId } });
+  return db.request.count({ where: { eventId, createdByGuestId: guestId, status: { not: "REJECTED" } } });
 }
 
 /** Tracks the guest added to the event, newest first, without ones the DJ rejected. */
@@ -155,6 +160,7 @@ async function loadRequest(id: string, db: PrismaClient): Promise<GuestRequest> 
  * A guest adds a track to the event's wish list:
  * - the event must be LIVE with requests open (otherwise `EVENT_NOT_LIVE` / `REQUESTS_CLOSED`);
  * - a track already on the list gets the guest's vote instead of a duplicate, and does not use up the guest's limit;
+ * - a track the DJ rejected gets no vote and a neutral `TRACK_UNAVAILABLE` (REJECTED never reaches a guest);
  * - a new track creates a PENDING request plus the guest's vote, unless the guest reached `maxRequestsPerGuest`.
  * Expects `track` validated by `trackInputSchema` and `guestId` validated by `isValidGuestId`.
  */
@@ -177,11 +183,16 @@ export async function addRequest(
     maxRequests,
   });
 
+  const voteForExisting = async (existing: { id: string; status: string }): Promise<AddRequestResult> =>
+    existing.status === "REJECTED"
+      ? { ok: false, reason: "TRACK_UNAVAILABLE" }
+      : done(await voteFor(existing.id, guestId, db), existing.id);
+
   const existing = await db.request.findUnique({
     where: { eventId_trackId: { eventId: event.id, trackId: track.id } },
-    select: { id: true },
+    select: { id: true, status: true },
   });
-  if (existing) return done(await voteFor(existing.id, guestId, db), existing.id);
+  if (existing) return voteForExisting(existing);
 
   try {
     // Count and insert in one transaction, so two quick taps of the same guest cannot both slip under the limit.
@@ -208,10 +219,10 @@ export async function addRequest(
     // Race: another guest added the same track between our lookup and insert. Vote for theirs instead.
     const winner = await db.request.findUnique({
       where: { eventId_trackId: { eventId: event.id, trackId: track.id } },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!winner) throw error;
-    return done(await voteFor(winner.id, guestId, db), winner.id);
+    return voteForExisting(winner);
   }
 }
 
@@ -221,6 +232,10 @@ export const GUEST_MESSAGES = {
   notStarted: "Impreza jeszcze się nie zaczęła.",
   closed: "Impreza zakończona.",
   requestsClosed: "DJ chwilowo nie przyjmuje nowych życzeń.",
+  trackUnavailable: "Ten utwór nie może zostać dodany.",
+  requestGone: "Tego utworu nie ma już na liście.",
+  alreadyPlayed: "Ten utwór został już zagrany.",
+  noGuest: "Odśwież stronę i spróbuj ponownie.",
   limitReached: (max: number) =>
     `Wykorzystano limit życzeń (${max}) na tę imprezę. Możesz dalej dodawać głosy na utwory, które już są na liście.`,
 } as const;

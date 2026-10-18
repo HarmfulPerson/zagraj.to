@@ -12,8 +12,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 
 const szampan = { id: "1234", title: "Szampan", artist: "sanah", coverUrl: "https://e-cdns-images.dzcdn.net/images/cover/x/250x250.jpg", durationSec: 200 };
 
-function post(code: string, body: unknown, guestId: string | null = GUEST_A) {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+function post(code: string, body: unknown, guestId: string | null = GUEST_A, contentType: string | null = "application/json") {
+  const headers: Record<string, string> = contentType ? { "content-type": contentType } : {};
   if (guestId !== null) headers.cookie = `guestId=${guestId}`;
   const request = new Request(`http://localhost/api/events/${code}/requests`, {
     method: "POST",
@@ -148,5 +148,27 @@ describe("POST /api/events/[code]/requests", () => {
       const stored = await prisma.request.findFirstOrThrow({ where: { trackId: guestId ?? "x" } });
       expect(stored.createdByGuestId).toBe(issued);
     }
+  });
+
+  it("answers 409 with a neutral message for a track the DJ rejected, without a vote", async () => {
+    const event = await createEvent();
+    await post(event.code, { track: szampan });
+    await prisma.request.updateMany({ where: { eventId: event.id }, data: { status: "REJECTED" } });
+
+    const res = await post(event.code, { track: szampan }, GUEST_B);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "TRACK_UNAVAILABLE", message: "Ten utwór nie może zostać dodany." });
+    expect(await prisma.vote.count()).toBe(1);
+  });
+
+  it("requires Content-Type: application/json (415), so cross-site forms cannot post", async () => {
+    const event = await createEvent();
+    for (const contentType of [null, "text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"]) {
+      const res = await post(event.code, JSON.stringify({ track: szampan }), GUEST_A, contentType);
+      expect(res.status).toBe(415);
+      expect(await res.json()).toEqual({ error: "UNSUPPORTED_MEDIA_TYPE" });
+    }
+    expect(await prisma.request.count()).toBe(0);
+    expect((await post(event.code, { track: szampan }, GUEST_A, "application/json; charset=utf-8")).status).toBe(201);
   });
 });

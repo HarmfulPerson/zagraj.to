@@ -27,3 +27,17 @@ export async function readJson(request: Request): Promise<unknown> {
     return undefined;
   }
 }
+
+/** True when the request declares a JSON body (`Content-Type: application/json`, parameters allowed). */
+export function isJsonContentType(request: Request): boolean {
+  const mediaType = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+  return mediaType === "application/json";
+}
+
+/**
+ * 415 unless the request is `Content-Type: application/json`. Guest endpoints require it: a cross-site HTML form
+ * cannot send that type, and a cross-site `fetch` with it needs a CORS preflight that we never allow.
+ */
+export function requireJsonContentType(request: Request): Response | null {
+  return isJsonContentType(request) ? null : Response.json({ error: "UNSUPPORTED_MEDIA_TYPE" }, { status: 415 });
+}
