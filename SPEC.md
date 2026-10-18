@@ -54,7 +54,7 @@ Dodanie utworu, który już jest na liście, nie tworzy duplikatu, tylko oddaje 
 
 ## Plany (założenie, do weryfikacji)
 - **Free:** 1 wydarzenie w stanie LIVE na miesiąc kalendarzowy, do 100 życzeń na wydarzenie, bez eksportu
-- **Pro (39 zł/mies.):** bez limitów, eksport CSV/tekst, własny tekst na plakacie
+- **Pro (25 zł/mies.):** bez limitów, eksport CSV/tekst, własny tekst na plakacie
 
 ## Ochrona przed nadużyciami
 - Limit życzeń na gościa na wydarzenie (`maxRequestsPerGuest`)
