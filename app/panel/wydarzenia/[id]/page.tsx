@@ -4,13 +4,17 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { changeEventStatusAction, updateEventAction } from "@/app/panel/event-actions";
+import { CopyLinkButton } from "@/components/panel/CopyLinkButton";
 import { EventForm } from "@/components/panel/EventForm";
 import { EventStatusControls } from "@/components/panel/EventStatusControls";
+import { QrCode } from "@/components/panel/QrCode";
 import { formatEventDate, StatusBadge } from "@/components/panel/StatusBadge";
+import { eventPosterPath } from "@/lib/app";
 import { PANEL_PATH, requireDj } from "@/lib/auth";
 import { formatRequestCount } from "@/lib/event-status";
 import { eventIdSchema } from "@/lib/event-validation";
 import { findDjEvent } from "@/lib/events";
+import { buildGuestEventUrl } from "@/lib/guest-url";
 
 export const metadata: Metadata = { title: "Wydarzenie | ZagrajTo" };
 
@@ -22,6 +26,7 @@ async function EventDetails({ id }: { id: string }) {
   // Someone else's event looks exactly like a missing one.
   const event = parsedId.success ? await findDjEvent(dj.id, parsedId.data) : null;
   if (!event) notFound();
+  const guestUrl = buildGuestEventUrl(event.code);
 
   return (
     <>
@@ -48,6 +53,36 @@ async function EventDetails({ id }: { id: string }) {
             <dd className="mt-1 text-base font-medium text-zinc-900 dark:text-zinc-100">{formatRequestCount(event.maxRequestsPerGuest)}</dd>
           </div>
         </dl>
+      </section>
+
+      <section className={card} aria-labelledby="qr-heading">
+        <h2 id="qr-heading" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Kod QR dla gości</h2>
+        <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-center">
+          <QrCode
+            value={guestUrl}
+            label={`Kod QR prowadzący do strony wydarzenia ${event.name}`}
+            testId="event-qr"
+            className="w-44 shrink-0 self-center overflow-hidden rounded-xl border border-zinc-200 bg-white p-1 sm:self-auto dark:border-zinc-700"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Goście skanują kod telefonem albo otwierają link i od razu mogą proponować piosenki.
+            </p>
+            <p className="mt-3 text-xs font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">Link dla gości</p>
+            <p data-testid="guest-url" className="mt-1 font-mono text-sm break-all text-zinc-900 dark:text-zinc-100">
+              {guestUrl}
+            </p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <CopyLinkButton url={guestUrl} />
+              <Link
+                href={eventPosterPath(event.id)}
+                className="flex min-h-12 items-center justify-center rounded-lg bg-violet-700 px-5 text-base font-semibold text-white shadow-sm transition hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700"
+              >
+                Plakat do druku
+              </Link>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className={card} aria-labelledby="status-heading">

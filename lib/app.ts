@@ -3,3 +3,5 @@ export const APP_TAGLINE = "Życzenia muzyczne od gości, prosto na tablicę DJ-
 
 export const NEW_EVENT_PATH = "/panel/wydarzenia/nowe";
 export const eventPanelPath = (eventId: string) => `/panel/wydarzenia/${eventId}`;
+export const eventPosterPath = (eventId: string) => `/panel/wydarzenia/${eventId}/plakat`;
+export const guestEventPath = (code: string) => `/e/${code}`;

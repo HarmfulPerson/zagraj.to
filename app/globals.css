@@ -22,3 +22,38 @@ body {
   color: var(--foreground);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+
+/* Printable A4 poster (/panel/wydarzenia/[id]/plakat). Sizes inside use cqw, so the on-screen
+   preview is an exact scaled copy of the printed page. */
+@page poster {
+  size: A4 portrait;
+  margin: 0;
+}
+
+.poster-sheet {
+  container-type: inline-size;
+  width: min(100%, 210mm);
+  aspect-ratio: 210 / 297;
+  overflow: hidden;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+@media print {
+  html,
+  body {
+    height: auto;
+    min-height: 0;
+    background: #ffffff;
+  }
+
+  .poster-sheet {
+    page: poster;
+    width: 210mm;
+    height: 297mm;
+    aspect-ratio: auto;
+    margin: 0;
+    break-inside: avoid;
+    break-after: avoid;
+  }
+}

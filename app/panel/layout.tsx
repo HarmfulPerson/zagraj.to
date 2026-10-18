@@ -26,8 +26,8 @@ async function DjMenu() {
 
 export default function PanelLayout({ children }: LayoutProps<"/panel">) {
   return (
-    <div className="flex flex-1 flex-col bg-zinc-50 dark:bg-zinc-950">
-      <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="flex flex-1 flex-col bg-zinc-50 print:bg-white dark:bg-zinc-950">
+      <header className="print:hidden border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mx-auto flex min-h-16 max-w-5xl items-center justify-between gap-4 px-4">
           <Link href="/panel" className="text-xl font-bold tracking-tight text-violet-700 dark:text-violet-400">
             {APP_NAME}
@@ -37,7 +37,7 @@ export default function PanelLayout({ children }: LayoutProps<"/panel">) {
           </Suspense>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 print:max-w-none print:p-0">{children}</main>
     </div>
   );
 }
