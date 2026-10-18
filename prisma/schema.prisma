@@ -1,0 +1,11 @@
+// Prisma schema. Models are added in ticket 002 (see SPEC.md, "Model danych").
+// SQLite in dev; keep the schema portable to Postgres.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
