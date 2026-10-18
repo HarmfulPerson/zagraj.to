@@ -1,5 +1,7 @@
-// Prisma schema. Models are added in ticket 002 (see SPEC.md, "Model danych").
+// Prisma schema (see SPEC.md, "Model danych").
 // SQLite in dev; keep the schema portable to Postgres.
+// Enums are native Prisma enums: on SQLite they are stored as TEXT and
+// validated by Prisma Client; on Postgres they become real enum types.
 
 generator client {
   provider = "prisma-client"
@@ -8,4 +10,83 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum EventStatus {
+  DRAFT
+  LIVE
+  CLOSED
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  PLAYED
+}
+
+model User {
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  passwordHash         String
+  displayName          String
+  plan                 Plan      @default(FREE)
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?   @unique
+  planRenewsAt         DateTime?
+  createdAt            DateTime  @default(now())
+
+  events Event[]
+}
+
+model Event {
+  id                  String      @id @default(cuid())
+  djId                String
+  dj                  User        @relation(fields: [djId], references: [id], onDelete: Cascade)
+  name                String
+  code                String      @unique
+  startsAt            DateTime?
+  status              EventStatus @default(DRAFT)
+  requestsOpen        Boolean     @default(true)
+  maxRequestsPerGuest Int         @default(5)
+  createdAt           DateTime    @default(now())
+
+  requests Request[]
+
+  @@index([djId])
+}
+
+model Request {
+  id               String        @id @default(cuid())
+  eventId          String
+  event            Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  trackId          String
+  title            String
+  artist           String
+  coverUrl         String?
+  durationSec      Int?
+  status           RequestStatus @default(PENDING)
+  createdByGuestId String
+  createdAt        DateTime      @default(now())
+  playedAt         DateTime?
+
+  votes Vote[]
+
+  @@unique([eventId, trackId])
+  @@index([eventId, createdByGuestId])
+}
+
+model Vote {
+  id        String   @id @default(cuid())
+  requestId String
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  guestId   String
+  createdAt DateTime @default(now())
+
+  @@unique([requestId, guestId])
 }
