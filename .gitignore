@@ -57,3 +57,6 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# visual check screenshots (scripts/ui-shots.mjs)
+/ui-shots/
