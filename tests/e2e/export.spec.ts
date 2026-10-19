@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { type Browser, expect, test } from "@playwright/test";
 
+import { setDjPlan } from "./db-helpers";
 import { clickAndWaitForSave, createEventRecord, registerDj } from "./guest-helpers";
 
 const TABLET_LANDSCAPE = { width: 1180, height: 820 };
@@ -15,10 +16,11 @@ async function guestAdds(browser: Browser, code: string, track: { id: string; ti
   await context.close();
 }
 
-test("DJ downloads the CSV and copies the list; another DJ gets 404", async ({ page, browser, baseURL }) => {
+test("Pro DJ downloads the CSV and copies the list; another DJ gets 404", async ({ page, browser, baseURL }) => {
   await page.setViewportSize(TABLET_LANDSCAPE);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: baseURL });
-  await registerDj(page);
+  // Export is a Pro feature (ticket 011); the Free case has its own test below.
+  setDjPlan(await registerDj(page), "PRO");
   const event = await createEventRecord(page, "Wesele Łucji", 5, ["start"]);
 
   const tricky = { id: "8001", title: 'Zażółć, "gęślą" jaźń', artist: "Łzy" };
@@ -85,4 +87,26 @@ test("DJ downloads the CSV and copies the list; another DJ gets 404", async ({ p
   expect(res.status()).toBe(404);
   expect(res.headers()["content-disposition"]).toBeUndefined();
   await other.close();
+});
+
+test("Free DJ sees the export locked with a padlock and an upgrade link; the API answers 403", async ({ page }) => {
+  await page.setViewportSize(TABLET_LANDSCAPE);
+  await registerDj(page);
+  await expect(page.getByTestId("plan-badge")).toHaveText("Plan: Free");
+  const event = await createEventRecord(page, "Osiemnastka Oli", 5, ["start"]);
+
+  await page.goto(`/panel/wydarzenia/${event.id}`);
+  await page.getByRole("button", { name: "Wydarzenie i QR" }).click();
+  const locked = page.getByTestId("export-locked");
+  await expect(locked).toBeVisible();
+  await expect(locked).toContainText("Eksport dostępny w planie Pro");
+  await expect(locked.getByRole("button", { name: "Pobierz CSV" })).toHaveAttribute("aria-disabled", "true");
+  await expect(locked.getByRole("button", { name: "Kopiuj listę" })).toHaveAttribute("aria-disabled", "true");
+  await expect(locked.getByRole("link", { name: /Przejdź na Pro/ })).toHaveAttribute("href", "/panel/subskrypcja");
+  await expect(page.getByTestId("export-controls")).toHaveCount(0);
+
+  const res = await page.request.get(`/api/events/${event.id}/export?format=csv`);
+  expect(res.status()).toBe(403);
+  expect(await res.json()).toMatchObject({ error: "PLAN_REQUIRED", upgradeUrl: "/panel/subskrypcja" });
+  expect(res.headers()["content-disposition"]).toBeUndefined();
 });

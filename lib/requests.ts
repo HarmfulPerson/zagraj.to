@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 import { Prisma, type PrismaClient } from "@/generated/prisma/client";
+import type { Plan } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 import type { EventStatus } from "@/lib/event-status";
+import { canAddRequest, PLAN_MESSAGES } from "@/lib/plans";
 
 export const TRACK_ID_MAX_LENGTH = 32;
 export const TRACK_TEXT_MAX_LENGTH = 200;
@@ -109,7 +111,9 @@ export type AddRequestResult =
   | { ok: false; reason: "TRACK_UNAVAILABLE" }
   /** The track has already been played tonight. No vote, consistent with the vote endpoint (409 for PLAYED). */
   | { ok: false; reason: "ALREADY_PLAYED" }
-  | { ok: false; reason: "LIMIT_REACHED"; maxRequests: number };
+  | { ok: false; reason: "LIMIT_REACHED"; maxRequests: number }
+  /** The event holds as many requests as the DJ's plan allows (Free: 100). Votes on listed tracks still work. */
+  | { ok: false; reason: "LIST_FULL" };
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -119,7 +123,15 @@ function isUniqueViolation(error: unknown): boolean {
 export function findGuestEvent(code: string, db: PrismaClient = prisma) {
   return db.event.findUnique({
     where: { code },
-    select: { id: true, name: true, code: true, status: true, requestsOpen: true, maxRequestsPerGuest: true },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      status: true,
+      requestsOpen: true,
+      maxRequestsPerGuest: true,
+      dj: { select: { plan: true } },
+    },
   });
 }
 
@@ -131,6 +143,19 @@ export type GuestEvent = NonNullable<Awaited<ReturnType<typeof findGuestEvent>>>
  */
 export function countGuestRequests(eventId: string, guestId: string, db: PrismaClient | Prisma.TransactionClient = prisma) {
   return db.request.count({ where: { eventId, createdByGuestId: guestId, status: { not: "REJECTED" } } });
+}
+
+/**
+ * How many requests count towards the plan's per-event limit (`maxRequestsPerEvent`): every track on the event's list
+ * except REJECTED ones (PENDING, ACCEPTED and PLAYED). A rejected track frees its slot, like in `countGuestRequests`.
+ */
+export function countEventRequests(eventId: string, db: PrismaClient | Prisma.TransactionClient = prisma) {
+  return db.request.count({ where: { eventId, status: { not: "REJECTED" } } });
+}
+
+/** True when the event's list holds as many requests as its DJ's plan allows (no new tracks, votes still work). */
+export async function isEventListFull(event: { id: string; dj: { plan: Plan } }, db: PrismaClient = prisma): Promise<boolean> {
+  return !canAddRequest(event.dj, await countEventRequests(event.id, db));
 }
 
 /** Tracks the guest added to the event, newest first, without ones the DJ rejected. */
@@ -164,7 +189,8 @@ async function loadRequest(id: string, db: PrismaClient): Promise<GuestRequest> 
  * - a track already on the list gets the guest's vote instead of a duplicate, and does not use up the guest's limit;
  * - a track the DJ rejected gets no vote and a neutral `TRACK_UNAVAILABLE` (REJECTED never reaches a guest);
  * - a track already played gets no vote and `ALREADY_PLAYED` (it is in the guest's "Zagrane" section anyway);
- * - a new track creates a PENDING request plus the guest's vote, unless the guest reached `maxRequestsPerGuest`.
+ * - a new track creates a PENDING request plus the guest's vote, unless the event's list is full for the DJ's plan
+ *   (`LIST_FULL`, Free: 100 requests without REJECTED) or the guest reached `maxRequestsPerGuest` (`LIMIT_REACHED`).
  * Expects `track` validated by `trackInputSchema` and `guestId` validated by `isValidGuestId`.
  */
 export async function addRequest(
@@ -199,9 +225,10 @@ export async function addRequest(
   if (existing) return voteForExisting(existing);
 
   try {
-    // Count and insert in one transaction, so two quick taps of the same guest cannot both slip under the limit.
+    // Count and insert in one transaction, so two quick taps (or two guests) cannot both slip under a limit.
     const created = await db.$transaction(async (tx) => {
-      if ((await countGuestRequests(event.id, guestId, tx)) >= maxRequests) return null;
+      if (!canAddRequest(event.dj, await countEventRequests(event.id, tx))) return "LIST_FULL" as const;
+      if ((await countGuestRequests(event.id, guestId, tx)) >= maxRequests) return "LIMIT_REACHED" as const;
       return tx.request.create({
         data: {
           eventId: event.id,
@@ -216,7 +243,8 @@ export async function addRequest(
         select: { id: true },
       });
     });
-    if (!created) return { ok: false, reason: "LIMIT_REACHED", maxRequests };
+    if (created === "LIST_FULL") return { ok: false, reason: "LIST_FULL" };
+    if (created === "LIMIT_REACHED") return { ok: false, reason: "LIMIT_REACHED", maxRequests };
     return done("CREATED", created.id);
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
@@ -240,6 +268,7 @@ export const GUEST_MESSAGES = {
   requestGone: "Tego utworu nie ma już na liście.",
   alreadyPlayed: "Ten utwór został już zagrany.",
   noGuest: "Odśwież stronę i spróbuj ponownie.",
+  listFull: `${PLAN_MESSAGES.listFull}. ${PLAN_MESSAGES.listFullDetails}`,
   limitReached: (max: number) =>
     `Wykorzystano limit życzeń (${max}) na tę imprezę. Możesz dalej dodawać głosy na utwory, które już są na liście.`,
 } as const;

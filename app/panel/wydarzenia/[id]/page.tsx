@@ -17,6 +17,7 @@ import { buildBoardColumns, loadBoardRows } from "@/lib/dj-board";
 import { formatRequestCount } from "@/lib/event-status";
 import { eventIdSchema } from "@/lib/event-validation";
 import { type DjEvent, findDjEvent } from "@/lib/events";
+import { canCustomizePoster, canExport, type Plan } from "@/lib/plans";
 import { buildGuestEventUrl } from "@/lib/guest-url";
 
 export const metadata: Metadata = { title: "Tablica na żywo | ZagrajTo" };
@@ -25,7 +26,7 @@ const card = "rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:bor
 const label = "text-xs font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400";
 
 /** Event management around the board: details, QR for guests, start/close, edit and export of the list. */
-function ManageEvent({ event }: { event: DjEvent }) {
+function ManageEvent({ event, plan }: { event: DjEvent; plan: Plan }) {
   const guestUrl = buildGuestEventUrl(event.code);
   return (
     <div className="grid gap-3 lg:grid-cols-3">
@@ -89,12 +90,13 @@ function ManageEvent({ event }: { event: DjEvent }) {
           <EventForm
             mode="edit"
             action={updateEventAction.bind(null, event.id)}
-            defaults={{ name: event.name, maxRequestsPerGuest: event.maxRequestsPerGuest }}
+            defaults={{ name: event.name, maxRequestsPerGuest: event.maxRequestsPerGuest, posterText: event.posterText ?? "" }}
+            posterTextLocked={!canCustomizePoster({ plan })}
           />
         </div>
       </section>
 
-      <ExportControls eventId={event.id} />
+      <ExportControls eventId={event.id} locked={!canExport({ plan })} />
     </div>
   );
 }
@@ -111,7 +113,7 @@ async function EventBoard({ id }: { id: string }) {
   };
 
   return (
-    <DjBoard eventId={event.id} name={event.name} code={event.code} initialBoard={board} manage={<ManageEvent event={event} />} />
+    <DjBoard eventId={event.id} name={event.name} code={event.code} initialBoard={board} manage={<ManageEvent event={event} plan={dj.plan} />} />
   );
 }
 

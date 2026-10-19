@@ -1,5 +1,6 @@
 import type { z } from "zod";
 
+import { SUBSCRIPTION_PATH } from "@/lib/app";
 import { firstFieldErrors } from "@/lib/auth-validation";
 
 /** JSON error bodies shared by the API routes: `{ error: CODE, ... }` with a matching HTTP status. */
@@ -13,6 +14,11 @@ export function notFound(): Response {
 
 export function validationError<T>(error: z.ZodError<T>): Response {
   return Response.json({ error: "VALIDATION", fieldErrors: firstFieldErrors(error) }, { status: 400 });
+}
+
+/** 403 for a feature or limit outside the DJ's plan: `{ error: CODE, message, upgradeUrl }` (Polish message). */
+export function planRequired(message: string, error = "PLAN_REQUIRED"): Response {
+  return Response.json({ error, message, upgradeUrl: SUBSCRIPTION_PATH }, { status: 403 });
 }
 
 export function invalidJson(): Response {

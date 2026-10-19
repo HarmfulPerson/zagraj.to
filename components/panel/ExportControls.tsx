@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 
+import { SUBSCRIPTION_PATH } from "@/lib/app";
 import { DEFAULT_EXPORT_STATUSES, EXPORT_STATUS_ORDER, exportUrl, REQUEST_STATUS_LABELS } from "@/lib/export";
+import { PLAN_MESSAGES } from "@/lib/plans";
 import type { RequestStatus } from "@/lib/request-status";
 
 type Feedback = { tone: "ok" | "error"; text: string } | null;
@@ -41,8 +44,62 @@ async function copyFrom(text: Promise<string>): Promise<void> {
   await navigator.clipboard.writeText(await text);
 }
 
-/** "Eksport listy" on the event page: status filter, CSV download and copying the list as text. */
-export function ExportControls({ eventId }: { eventId: string }) {
+const sectionClass =
+  "rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-3 dark:border-zinc-800 dark:bg-zinc-900";
+const buttonClass =
+  "flex min-h-12 items-center justify-center gap-2 rounded-lg px-5 text-base font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500";
+
+function LockIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
+/** Export on a plan without it (Free): locked buttons with a padlock, the reason and a link to upgrade. */
+function LockedExport() {
+  const headingId = useId();
+  const locked = `${buttonClass} cursor-not-allowed border border-dashed border-zinc-400 bg-transparent text-zinc-500 dark:border-zinc-600 dark:text-zinc-400`;
+  return (
+    <section aria-labelledby={headingId} data-testid="export-locked" className={sectionClass}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <h2 id={headingId} className="flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+            Eksport listy
+            <span className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-500/20 dark:text-violet-200">
+              Pro
+            </span>
+          </h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            {PLAN_MESSAGES.exportLocked}. Pobierz listę jako CSV albo skopiuj ją do playlisty w Spotify czy rekordbox.
+          </p>
+          <Link href={SUBSCRIPTION_PATH} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-violet-700 hover:underline dark:text-violet-300">
+            {PLAN_MESSAGES.upgradeCta} →
+          </Link>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row lg:shrink-0">
+          <span role="button" aria-disabled="true" aria-describedby={headingId} title={PLAN_MESSAGES.exportLocked} className={locked}>
+            <LockIcon />
+            Pobierz CSV
+          </span>
+          <span role="button" aria-disabled="true" aria-describedby={headingId} title={PLAN_MESSAGES.exportLocked} className={locked}>
+            <LockIcon />
+            Kopiuj listę
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** "Eksport listy" on the event page: status filter, CSV download and copying the list as text (locked without Pro). */
+export function ExportControls({ eventId, locked = false }: { eventId: string; locked?: boolean }) {
+  return locked ? <LockedExport /> : <UnlockedExport eventId={eventId} />;
+}
+
+function UnlockedExport({ eventId }: { eventId: string }) {
   const [statuses, setStatuses] = useState<RequestStatus[]>([...DEFAULT_EXPORT_STATUSES]);
   const [copying, setCopying] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -78,14 +135,13 @@ export function ExportControls({ eventId }: { eventId: string }) {
       <path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" />
     </svg>
   );
-  const button =
-    "flex min-h-12 items-center justify-center gap-2 rounded-lg px-5 text-base font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500";
+  const button = buttonClass;
 
   return (
     <section
       aria-labelledby={headingId}
       data-testid="export-controls"
-      className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-3 dark:border-zinc-800 dark:bg-zinc-900"
+      className={sectionClass}
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">

@@ -28,7 +28,8 @@ export async function GET(request: Request, ctx: RouteContext<"/api/events/[id]/
  *
  * 201 new request (+ the guest's vote) · 200 vote on a track already on the list (or already voted)
  * 400 invalid body · 403 event not LIVE or requests closed · 404 unknown code
- * 409 the DJ rejected this track (`TRACK_UNAVAILABLE`, neutral message) or it was already played (`ALREADY_PLAYED`); no vote either way · 415 not `application/json` · 429 guest's request limit reached.
+ * 409 the DJ rejected this track (`TRACK_UNAVAILABLE`, neutral message) or it was already played (`ALREADY_PLAYED`); no vote either way
+ * 409 `LIST_FULL`: the event holds as many tracks as the DJ's plan allows (Free: 100); votes on listed tracks still work · 415 not `application/json` · 429 guest's request limit reached.
  * A guest without a valid `guestId` cookie gets a fresh one with the response.
  */
 export async function POST(request: Request, ctx: RouteContext<"/api/events/[id]/requests">) {
@@ -74,6 +75,8 @@ function toResponse(result: AddRequestResult): [unknown, number] {
       return [{ error: "TRACK_UNAVAILABLE", message: GUEST_MESSAGES.trackUnavailable }, 409];
     case "ALREADY_PLAYED":
       return [{ error: "ALREADY_PLAYED", message: GUEST_MESSAGES.alreadyPlayed }, 409];
+    case "LIST_FULL":
+      return [{ error: "LIST_FULL", message: GUEST_MESSAGES.listFull }, 409];
     case "LIMIT_REACHED":
       return [{ error: "REQUEST_LIMIT", maxRequests: result.maxRequests, message: GUEST_MESSAGES.limitReached(result.maxRequests) }, 429];
   }

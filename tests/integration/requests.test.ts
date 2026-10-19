@@ -3,7 +3,15 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { createPrismaClient } from "@/lib/db-client";
 import { generateEventCode } from "@/lib/event-code";
-import { addRequest, countGuestRequests, listGuestRequests, trackInputSchema, type TrackInput } from "@/lib/requests";
+import {
+  addRequest,
+  countEventRequests,
+  countGuestRequests,
+  isEventListFull,
+  listGuestRequests,
+  trackInputSchema,
+  type TrackInput,
+} from "@/lib/requests";
 
 const prisma = createPrismaClient();
 
@@ -287,5 +295,71 @@ describe("listGuestRequests", () => {
     expect(mine.map((request) => request.trackId)).toEqual(["3", "1"]);
     // Rejected tracks do not count towards the limit (the counter must not reveal a rejection).
     expect(await countGuestRequests(event.id, GUEST_A, prisma)).toBe(2);
+  });
+});
+
+describe("addRequest: plan limit of requests per event (ticket 011)", () => {
+  /** Fills the event with `count` requests from other guests, with the given status. */
+  async function fill(eventId: string, count: number, status: "PENDING" | "ACCEPTED" | "PLAYED" | "REJECTED" = "PENDING", offset = 0) {
+    await prisma.request.createMany({
+      data: Array.from({ length: count }, (_, i) => ({
+        eventId,
+        trackId: `seed-${status}-${offset + i}`,
+        title: `Seed ${i}`,
+        artist: "X",
+        status,
+        createdByGuestId: `guest-${offset + i}`,
+      })),
+    });
+  }
+
+  async function eventOf(plan: "FREE" | "PRO") {
+    const event = await createEvent({ maxRequestsPerGuest: 20 });
+    await prisma.user.update({ where: { id: event.djId }, data: { plan } });
+    return event;
+  }
+
+  it("Free: the 100th track is accepted, the 101st gets LIST_FULL; votes on listed tracks still work", async () => {
+    const event = await eventOf("FREE");
+    await fill(event.id, 99);
+    expect(await addRequest({ code: event.code, guestId: GUEST_A, track: track("100") }, prisma)).toMatchObject({ ok: true, outcome: "CREATED" });
+
+    expect(await addRequest({ code: event.code, guestId: GUEST_B, track: track("101") }, prisma)).toEqual({ ok: false, reason: "LIST_FULL" });
+    expect(await prisma.request.count({ where: { eventId: event.id } })).toBe(100);
+
+    // Adding a track that is already on the list is a vote, not a new request.
+    expect(await addRequest({ code: event.code, guestId: GUEST_B, track: track("100") }, prisma)).toMatchObject({ ok: true, outcome: "VOTED" });
+    expect(await isEventListFull({ id: event.id, dj: { plan: "FREE" } }, prisma)).toBe(true);
+  });
+
+  it("Free: PLAYED and ACCEPTED count, REJECTED frees its slot", async () => {
+    const event = await eventOf("FREE");
+    await fill(event.id, 50, "PLAYED");
+    await fill(event.id, 49, "ACCEPTED");
+    await fill(event.id, 10, "REJECTED");
+    expect(await countEventRequests(event.id, prisma)).toBe(99);
+    expect((await addRequest({ code: event.code, guestId: GUEST_A, track: track("a") }, prisma)).ok).toBe(true);
+    expect(await addRequest({ code: event.code, guestId: GUEST_A, track: track("b") }, prisma)).toEqual({ ok: false, reason: "LIST_FULL" });
+
+    await prisma.request.updateMany({ where: { eventId: event.id, trackId: "a" }, data: { status: "REJECTED" } });
+    expect((await addRequest({ code: event.code, guestId: GUEST_A, track: track("b") }, prisma)).ok).toBe(true);
+  });
+
+  it("Free: two guests adding different tracks at the same moment cannot exceed 100", async () => {
+    const event = await eventOf("FREE");
+    await fill(event.id, 99);
+    const results = await Promise.all([
+      addRequest({ code: event.code, guestId: GUEST_A, track: track("x") }, prisma),
+      addRequest({ code: event.code, guestId: GUEST_B, track: track("y") }, prisma),
+    ]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(await prisma.request.count({ where: { eventId: event.id } })).toBe(100);
+  });
+
+  it("Pro: no limit of requests per event", async () => {
+    const event = await eventOf("PRO");
+    await fill(event.id, 150);
+    expect(await addRequest({ code: event.code, guestId: GUEST_A, track: track("151") }, prisma)).toMatchObject({ ok: true, outcome: "CREATED" });
+    expect(await isEventListFull({ id: event.id, dj: { plan: "PRO" } }, prisma)).toBe(false);
   });
 });

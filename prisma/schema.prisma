@@ -54,11 +54,16 @@ model Event {
   status              EventStatus @default(DRAFT)
   requestsOpen        Boolean     @default(true)
   maxRequestsPerGuest Int         @default(5)
+  /// When the event first went DRAFT → LIVE (counts towards the Free plan's monthly start limit).
+  startedAt           DateTime?
+  /// Pro only: own text on the printed poster (shown under the default slogan).
+  posterText          String?
   createdAt           DateTime    @default(now())
 
   requests Request[]
 
   @@index([djId])
+  @@index([djId, startedAt])
 }
 
 model Request {

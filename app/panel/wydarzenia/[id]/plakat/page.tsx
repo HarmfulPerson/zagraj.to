@@ -10,6 +10,7 @@ import { requireDj } from "@/lib/auth";
 import { eventIdSchema } from "@/lib/event-validation";
 import { findDjEvent } from "@/lib/events";
 import { buildGuestEventUrl, displayGuestEventUrl } from "@/lib/guest-url";
+import { canCustomizePoster } from "@/lib/plans";
 import { posterTitleSize } from "@/lib/poster";
 
 export const metadata: Metadata = { title: "Plakat | ZagrajTo" };
@@ -23,6 +24,8 @@ async function Poster({ id }: { id: string }) {
   if (!event) notFound();
 
   const guestUrl = buildGuestEventUrl(event.code);
+  // Pro only: a text saved while on Pro is not printed after a downgrade.
+  const customText = canCustomizePoster(dj) ? event.posterText : null;
 
   return (
     <>
@@ -65,8 +68,14 @@ async function Poster({ id }: { id: string }) {
             Zeskanuj i zamów piosenkę
           </p>
 
+          {customText ? (
+            <p data-testid="poster-custom-text" className="mt-[1.5cqw] line-clamp-2 max-w-full text-[3.4cqw] text-balance leading-snug font-semibold break-words text-zinc-700">
+              {customText}
+            </p>
+          ) : null}
+
           <div className="mt-[3cqw] rounded-[3cqw] border-[0.6cqw] border-violet-700 bg-white p-[1.2cqw]">
-            <QrCode value={guestUrl} label={`Kod QR prowadzący do strony wydarzenia ${event.name}`} testId="poster-qr" className="w-[50cqw]" />
+            <QrCode value={guestUrl} label={`Kod QR prowadzący do strony wydarzenia ${event.name}`} testId="poster-qr" className={customText ? "w-[46cqw]" : "w-[50cqw]"} />
           </div>
 
           <div className="mt-[3cqw]">

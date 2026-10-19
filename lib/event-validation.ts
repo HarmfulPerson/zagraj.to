@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { EVENT_STATUS_ACTIONS } from "@/lib/event-status";
+import { POSTER_TEXT_MAX_LENGTH } from "@/lib/plans";
 
 export const EVENT_NAME_MAX_LENGTH = 100;
 export const MAX_REQUESTS_PER_GUEST_MIN = 1;
@@ -62,10 +63,23 @@ export const createEventSchema = z.object({
   maxRequestsPerGuest: maxRequestsSchema(MAX_REQUESTS_PER_GUEST_DEFAULT),
 });
 
-/** Editing: name and per-guest limit (both required). */
+/** Own poster text (Pro): trimmed, one line, blank clears it (null). */
+const posterTextSchema = z.preprocess(
+  (value) => (isBlank(value) ? null : typeof value === "string" ? value.trim().replace(/\s+/g, " ") : value),
+  z
+    .string({ error: "Podaj tekst na plakat." })
+    .max(POSTER_TEXT_MAX_LENGTH, { error: `Tekst na plakat może mieć najwyżej ${POSTER_TEXT_MAX_LENGTH} znaków.` })
+    .nullable(),
+);
+
+/**
+ * Editing: name and per-guest limit (both required), optionally the poster text (Pro only, enforced in `updateEvent`).
+ * A missing `posterText` leaves the stored text unchanged.
+ */
 export const updateEventSchema = z.object({
   name: nameSchema,
   maxRequestsPerGuest: maxRequestsSchema(),
+  posterText: posterTextSchema.optional(),
 });
 
 export const eventStatusActionSchema = z.object({

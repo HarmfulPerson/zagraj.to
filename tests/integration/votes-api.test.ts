@@ -144,7 +144,7 @@ describe("GET /api/events/[code]/requests", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
     const body = await response.json();
-    expect(body.event).toEqual({ status: "LIVE", requestsOpen: true });
+    expect(body.event).toEqual({ status: "LIVE", requestsOpen: true, listFull: false });
     expect(body.queue).toEqual([
       expect.objectContaining({ id: popular.id, votes: 2, votedByMe: true, mine: false, status: "PENDING" }),
       expect.objectContaining({ id: mine.id, votes: 1, votedByMe: true, mine: true, status: "ACCEPTED" }),

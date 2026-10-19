@@ -2,8 +2,9 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { logoutAction } from "@/app/auth-actions";
-import { APP_NAME } from "@/lib/app";
+import { APP_NAME, SUBSCRIPTION_PATH } from "@/lib/app";
 import { requireDj } from "@/lib/auth";
+import { getPlanLimits } from "@/lib/plans";
 
 async function DjMenu() {
   const dj = await requireDj();
@@ -12,6 +13,18 @@ async function DjMenu() {
       <span className="hidden truncate text-sm text-zinc-600 sm:inline dark:text-zinc-400" data-testid="dj-name">
         {dj.displayName}
       </span>
+      <Link
+        href={SUBSCRIPTION_PATH}
+        data-testid="plan-badge"
+        title="Twój plan"
+        className={`inline-flex min-h-8 shrink-0 items-center rounded-full px-3 text-xs font-semibold ring-1 transition ring-inset ${
+          dj.plan === "PRO"
+            ? "bg-violet-700 text-white ring-violet-700 hover:bg-violet-800"
+            : "bg-zinc-100 text-zinc-700 ring-zinc-300 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:ring-zinc-700 dark:hover:bg-zinc-700"
+        }`}
+      >
+        Plan: {getPlanLimits(dj.plan).name}
+      </Link>
       <form action={logoutAction}>
         <button
           type="submit"

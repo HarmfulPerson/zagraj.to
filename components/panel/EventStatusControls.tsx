@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 
 import type { StatusFormState } from "@/app/panel/event-actions";
 import { availableStatusActions, type EventStatus } from "@/lib/event-status";
+import { PLAN_MESSAGES } from "@/lib/plans";
 
 type Props = {
   status: EventStatus;
@@ -29,7 +31,21 @@ export function EventStatusControls({ status, action }: Props) {
   return (
     <div>
       <p className="text-sm text-zinc-600 dark:text-zinc-400">{DESCRIPTIONS[status]}</p>
-      {state.error ? (
+      {state.error && state.upgradeHref ? (
+        <div
+          role="alert"
+          data-testid="plan-limit-alert"
+          className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+        >
+          <p>{state.error}</p>
+          <Link
+            href={state.upgradeHref}
+            className="mt-3 inline-flex min-h-11 items-center justify-center rounded-lg bg-violet-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700"
+          >
+            {PLAN_MESSAGES.upgradeCta}
+          </Link>
+        </div>
+      ) : state.error ? (
         <div role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
           {state.error}
         </div>

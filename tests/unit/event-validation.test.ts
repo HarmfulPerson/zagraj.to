@@ -68,6 +68,19 @@ describe("updateEventSchema", () => {
     const parsed = updateEventSchema.parse({ name: "N", maxRequestsPerGuest: 3, status: "LIVE", code: "AAAAAA", djId: "x" });
     expect(parsed).toEqual({ name: "N", maxRequestsPerGuest: 3 });
   });
+
+  it("takes an optional poster text: trimmed to one line, blank clears it, at most 80 characters", () => {
+    const base = { name: "N", maxRequestsPerGuest: 3 };
+    expect(updateEventSchema.parse(base)).not.toHaveProperty("posterText");
+    expect(updateEventSchema.parse({ ...base, posterText: "  Bawimy się\n do rana!  " }).posterText).toBe("Bawimy się do rana!");
+    expect(updateEventSchema.parse({ ...base, posterText: "   " }).posterText).toBeNull();
+    expect(updateEventSchema.parse({ ...base, posterText: null }).posterText).toBeNull();
+    expect(updateEventSchema.parse({ ...base, posterText: "x".repeat(80) }).posterText).toHaveLength(80);
+    const tooLong = updateEventSchema.safeParse({ ...base, posterText: "x".repeat(81) });
+    expect(tooLong.success).toBe(false);
+    expect(tooLong.error?.issues[0].message).toBe("Tekst na plakat może mieć najwyżej 80 znaków.");
+    expect(updateEventSchema.safeParse({ ...base, posterText: 5 }).success).toBe(false);
+  });
 });
 
 describe("eventStatusActionSchema", () => {

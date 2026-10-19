@@ -132,7 +132,7 @@ describe("getGuestList", () => {
     const playedNew = await createRequest(event.id, { status: "PLAYED", playedAt: minute(20) });
 
     const list = await getGuestList(event.code, GUEST_A, prisma);
-    expect(list?.event).toEqual({ status: "LIVE", requestsOpen: true });
+    expect(list?.event).toEqual({ status: "LIVE", requestsOpen: true, listFull: false });
     expect(list?.queue.map((item) => item.id)).toEqual([three.id, twoOld.id, twoNew.id, one.id]);
     expect(list?.queue.map((item) => item.votes)).toEqual([3, 2, 2, 1]);
     expect(list?.queue.map((item) => item.votedByMe)).toEqual([true, true, false, false]);
@@ -161,10 +161,34 @@ describe("getGuestList", () => {
     const closed = await createEvent({ status: "CLOSED", requestsOpen: false });
     await createRequest(closed.id);
     expect(await getGuestList(closed.code, GUEST_A, prisma)).toEqual({
-      event: { status: "CLOSED", requestsOpen: false },
+      event: { status: "CLOSED", requestsOpen: false, listFull: false },
       queue: [],
       played: [],
     });
     expect(await getGuestList("ZZZZZZ", GUEST_A, prisma)).toBeNull();
+  });
+});
+
+describe("getGuestList: listFull (ticket 011)", () => {
+  async function fill(eventId: string, count: number) {
+    await prisma.request.createMany({
+      data: Array.from({ length: count }, (_, i) => ({ eventId, trackId: `seed-${i}`, title: `S${i}`, artist: "X", createdByGuestId: `g-${i}` })),
+    });
+  }
+
+  it("is true for a Free event with 100 tracks, false with 99 and for Pro; liking still works when full", async () => {
+    const event = await createEvent();
+    await fill(event.id, 99);
+    expect((await getGuestList(event.code, GUEST_A, prisma))?.event.listFull).toBe(false);
+
+    await prisma.request.create({ data: { eventId: event.id, trackId: "last", title: "L", artist: "X", createdByGuestId: GUEST_B } });
+    const full = await getGuestList(event.code, GUEST_A, prisma);
+    expect(full?.event).toEqual({ status: "LIVE", requestsOpen: true, listFull: true });
+
+    const request = await prisma.request.findFirstOrThrow({ where: { eventId: event.id, trackId: "last" } });
+    expect(await castVote(request.id, GUEST_A, prisma)).toMatchObject({ ok: true });
+
+    await prisma.user.update({ where: { id: event.djId }, data: { plan: "PRO" } });
+    expect((await getGuestList(event.code, GUEST_A, prisma))?.event.listFull).toBe(false);
   });
 });

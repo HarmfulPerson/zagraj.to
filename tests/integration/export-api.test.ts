@@ -12,15 +12,16 @@ const { GET } = await import("@/app/api/events/[id]/export/route");
 
 const prisma = createPrismaClient();
 
-async function createDj(): Promise<CurrentDj> {
-  const user = await prisma.user.create({ data: { email: `dj-${Math.random()}@example.com`, passwordHash: "x", displayName: "DJ" } });
+// Export is a Pro feature (ticket 011), so the event owner is PRO unless a test is about the Free plan.
+async function createDj(plan: "FREE" | "PRO" = "PRO"): Promise<CurrentDj> {
+  const user = await prisma.user.create({ data: { email: `dj-${Math.random()}@example.com`, passwordHash: "x", displayName: "DJ", plan } });
   return { id: user.id, email: user.email, displayName: user.displayName, plan: user.plan };
 }
 
 const at = (minute: number) => new Date(Date.UTC(2026, 9, 24, 19, minute));
 
-async function setup() {
-  const owner = await createDj();
+async function setup(plan: "FREE" | "PRO" = "PRO") {
+  const owner = await createDj(plan);
   const event = await prisma.event.create({
     data: { djId: owner.id, name: "Wesele Łucji", code: generateEventCode(), status: "LIVE", startsAt: new Date("2026-10-24T00:00:00Z") },
   });
@@ -94,13 +95,29 @@ describe("GET /api/events/[id]/export", () => {
 
   it("returns 404 for another DJ's event and for an unknown one", async () => {
     const { event } = await setup();
-    auth.currentDj = await createDj();
+    // A Free DJ probing someone else's event still gets 404, never "upgrade to Pro".
+    auth.currentDj = await createDj("FREE");
     const res = await get(event.id, "format=csv");
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "NOT_FOUND" });
     expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(res.headers.get("content-disposition")).toBeNull();
     expect((await get("does-not-exist", "format=csv")).status).toBe(404);
+  });
+
+  it("refuses export for a Free DJ's own event with 403 PLAN_REQUIRED and a Polish message, in both formats", async () => {
+    const { event } = await setup("FREE");
+    for (const format of ["csv", "txt"]) {
+      const res = await get(event.id, `format=${format}`);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({
+        error: "PLAN_REQUIRED",
+        message: "Eksport dostępny w planie Pro.",
+        upgradeUrl: "/panel/subskrypcja",
+      });
+      expect(res.headers.get("cache-control")).toBe("private, no-store");
+      expect(res.headers.get("content-disposition")).toBeNull();
+    }
   });
 
   it("returns 401 without a session", async () => {

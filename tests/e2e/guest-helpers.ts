@@ -9,13 +9,16 @@ export const TRACKS = [
 
 export const PHONE = { viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true, locale: "pl-PL" };
 
-export async function registerDj(page: Page) {
+/** Registers a fresh (Free) DJ and returns the e-mail, e.g. for `setDjPlan`. */
+export async function registerDj(page: Page): Promise<string> {
+  const email = `dj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   await page.goto("/rejestracja");
-  await page.getByLabel("E-mail").fill(`dj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`);
+  await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Nazwa wyświetlana").fill("DJ Gość");
   await page.getByLabel("Hasło").fill("tajnehaslo123");
   await page.getByRole("button", { name: "Załóż konto" }).click();
   await expect(page).toHaveURL(/\/panel$/);
+  return email;
 }
 
 /** Creates an event as the logged-in DJ and applies status actions; returns its id and code. */

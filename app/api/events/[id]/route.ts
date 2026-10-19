@@ -1,7 +1,8 @@
-import { invalidJson, notFound, readJson, unauthorized, validationError } from "@/lib/api-responses";
+import { invalidJson, notFound, planRequired, readJson, unauthorized, validationError } from "@/lib/api-responses";
 import { getCurrentDj } from "@/lib/auth";
 import { eventIdSchema, updateEventSchema } from "@/lib/event-validation";
 import { findDjEvent, updateEvent } from "@/lib/events";
+import { PLAN_MESSAGES } from "@/lib/plans";
 
 /** GET /api/events/:id. Someone else's event is indistinguishable from a missing one (404). */
 export async function GET(_request: Request, ctx: RouteContext<"/api/events/[id]">) {
@@ -13,7 +14,10 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/events/[id]
   return event ? Response.json({ event }) : notFound();
 }
 
-/** PATCH /api/events/:id `{ name, maxRequestsPerGuest }`: edits the DJ's own event. */
+/**
+ * PATCH /api/events/:id `{ name, maxRequestsPerGuest, posterText? }`: edits the DJ's own event.
+ * `posterText` (max 80 characters, blank clears it) is Pro only: 403 `PLAN_REQUIRED` for a Free DJ sending a text.
+ */
 export async function PATCH(request: Request, ctx: RouteContext<"/api/events/[id]">) {
   const dj = await getCurrentDj();
   if (!dj) return unauthorized();
@@ -26,6 +30,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/events/[id
   const parsed = updateEventSchema.safeParse(body);
   if (!parsed.success) return validationError(parsed.error);
 
-  const event = await updateEvent(dj.id, id.data, parsed.data);
-  return event ? Response.json({ event }) : notFound();
+  const result = await updateEvent(dj.id, id.data, parsed.data);
+  if (result.ok) return Response.json({ event: result.event });
+  return result.reason === "PLAN_REQUIRED" ? planRequired(PLAN_MESSAGES.posterTextLocked) : notFound();
 }

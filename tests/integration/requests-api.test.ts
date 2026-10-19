@@ -184,3 +184,29 @@ describe("POST /api/events/[code]/requests", () => {
     expect((await post(event.code, { track: szampan }, GUEST_A, "application/json; charset=utf-8")).status).toBe(201);
   });
 });
+
+describe("POST /api/events/[code]/requests: list full (ticket 011)", () => {
+  it("answers 409 LIST_FULL with a Polish message once a Free event holds 100 tracks; an existing track is still a vote", async () => {
+    const event = await createEvent({ maxRequestsPerGuest: 20 });
+    await prisma.request.createMany({
+      data: Array.from({ length: 100 }, (_, i) => ({
+        eventId: event.id,
+        trackId: `seed-${i}`,
+        title: `Seed ${i}`,
+        artist: "X",
+        createdByGuestId: `guest-${i}`,
+      })),
+    });
+
+    const full = await post(event.code, { track: szampan });
+    expect(full.status).toBe(409);
+    expect(await full.json()).toEqual({
+      error: "LIST_FULL",
+      message: "Lista jest pełna. DJ zebrał już maksymalną liczbę życzeń. Możesz dalej lajkować utwory, które są na liście.",
+    });
+
+    const vote = await post(event.code, { track: { ...szampan, id: "seed-7" } });
+    expect(vote.status).toBe(200);
+    expect((await vote.json()).outcome).toBe("VOTED");
+  });
+});

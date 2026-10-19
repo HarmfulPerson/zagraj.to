@@ -5,23 +5,27 @@ import { useActionState } from "react";
 
 import type { EventFormState } from "@/app/panel/event-actions";
 import { FormField, SubmitButton } from "@/components/auth/FormField";
+import { SUBSCRIPTION_PATH } from "@/lib/app";
 import {
   EVENT_NAME_MAX_LENGTH,
   MAX_REQUESTS_PER_GUEST_DEFAULT,
   MAX_REQUESTS_PER_GUEST_MAX,
   MAX_REQUESTS_PER_GUEST_MIN,
 } from "@/lib/event-validation";
+import { PLAN_MESSAGES, POSTER_TEXT_MAX_LENGTH } from "@/lib/plans";
 
 type EventFormProps = {
   action: (prev: EventFormState, formData: FormData) => Promise<EventFormState>;
   mode: "create" | "edit";
-  defaults?: { name: string; maxRequestsPerGuest: number };
+  defaults?: { name: string; maxRequestsPerGuest: number; posterText?: string };
+  /** Edit mode: the poster text is a Pro feature; a locked field is shown disabled (and so never submitted). */
+  posterTextLocked?: boolean;
   cancelHref?: string;
 };
 
 const initialState: EventFormState = {};
 
-export function EventForm({ action, mode, defaults, cancelHref }: EventFormProps) {
+export function EventForm({ action, mode, defaults, posterTextLocked = true, cancelHref }: EventFormProps) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const errors = state.fieldErrors ?? {};
   const values = state.values;
@@ -63,6 +67,21 @@ export function EventForm({ action, mode, defaults, cancelHref }: EventFormProps
         error={errors.maxRequestsPerGuest}
         hint={`Od ${MAX_REQUESTS_PER_GUEST_MIN} do ${MAX_REQUESTS_PER_GUEST_MAX}. Tyle utworów może dodać jeden gość.`}
       />
+      {isCreate ? null : posterTextLocked ? (
+        <LockedPosterText />
+      ) : (
+        <FormField
+          name="posterText"
+          label="Tekst na plakacie (opcjonalnie)"
+          type="text"
+          maxLength={POSTER_TEXT_MAX_LENGTH}
+          autoComplete="off"
+          placeholder="Np. Najlepsza para, najlepsza muzyka!"
+          defaultValue={values?.posterText ?? defaults?.posterText ?? ""}
+          error={errors.posterText}
+          hint={`Do ${POSTER_TEXT_MAX_LENGTH} znaków. Pojawi się na plakacie pod hasłem „Zeskanuj i zamów piosenkę”.`}
+        />
+      )}
       {state.savedAt ? (
         <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
           Zmiany zapisane.
@@ -84,5 +103,38 @@ export function EventForm({ action, mode, defaults, cancelHref }: EventFormProps
         </div>
       </div>
     </form>
+  );
+}
+
+function LockedPosterText() {
+  return (
+    <div data-testid="poster-text-locked">
+      <label htmlFor="field-posterText" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+        Tekst na plakacie
+        <span className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-500/20 dark:text-violet-200">
+          Pro
+        </span>
+      </label>
+      <div className="relative">
+        <svg aria-hidden viewBox="0 0 24 24" className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-zinc-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="5" y="11" width="14" height="10" rx="2" />
+          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+        </svg>
+        <input
+          id="field-posterText"
+          type="text"
+          disabled
+          aria-describedby="field-posterText-hint"
+          placeholder="Własny tekst pod hasłem"
+          className="block min-h-12 w-full cursor-not-allowed rounded-lg border border-dashed border-zinc-300 bg-zinc-50 py-2.5 pr-3.5 pl-11 text-base text-zinc-500 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:placeholder:text-zinc-500"
+        />
+      </div>
+      <p id="field-posterText-hint" className="mt-1.5 text-sm text-zinc-500 dark:text-zinc-400">
+        {PLAN_MESSAGES.posterTextLocked}.{" "}
+        <Link href={SUBSCRIPTION_PATH} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">
+          {PLAN_MESSAGES.upgradeCta}
+        </Link>
+      </p>
+    </div>
   );
 }

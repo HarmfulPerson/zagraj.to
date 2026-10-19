@@ -130,3 +130,56 @@ describe("own event", () => {
     expect(await reopen.json()).toEqual({ error: "INVALID_TRANSITION", status: "CLOSED" });
   });
 });
+
+describe("plan limits (ticket 011)", () => {
+  async function setPlan(plan: "FREE" | "PRO") {
+    await prisma.user.update({ where: { id: auth.currentDj!.id }, data: { plan } });
+    auth.currentDj = { ...auth.currentDj!, plan };
+  }
+
+  it("Free: the second start this month is 403 PLAN_LIMIT with a Polish message and the upgrade link", async () => {
+    const first = await createAs("free@example.com", "Pierwsze");
+    const res1 = await postEvent(jsonRequest("POST", { name: "Drugie" }));
+    const second = (await res1.json()).event as { id: string };
+
+    expect((await postStatus(jsonRequest("POST", { action: "start" }), ctx(first.id))).status).toBe(200);
+    const blocked = await postStatus(jsonRequest("POST", { action: "start" }), ctx(second.id));
+    expect(blocked.status).toBe(403);
+    expect(await blocked.json()).toEqual({
+      error: "PLAN_LIMIT",
+      message: "W planie Free możesz uruchomić 1 wydarzenie w miesiącu kalendarzowym. Przejdź na Pro, aby uruchamiać wydarzenia bez limitu.",
+      upgradeUrl: "/panel/subskrypcja",
+    });
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: second.id } })).status).toBe("DRAFT");
+  });
+
+  it("Pro: starts several events in a row", async () => {
+    await loginAs("pro@example.com");
+    await setPlan("PRO");
+    for (const name of ["A", "B", "C"]) {
+      const { event } = (await (await postEvent(jsonRequest("POST", { name }))).json()) as { event: { id: string } };
+      expect((await postStatus(jsonRequest("POST", { action: "start" }), ctx(event.id))).status).toBe(200);
+    }
+  });
+
+  it("PATCH posterText: 403 PLAN_REQUIRED for Free (nothing saved), 200 for Pro, validated (max 80)", async () => {
+    const event = await createAs("dj@example.com");
+    const free = await patchEvent(jsonRequest("PATCH", { name: "Nowa", maxRequestsPerGuest: 5, posterText: "Hej" }), ctx(event.id));
+    expect(free.status).toBe(403);
+    expect(await free.json()).toEqual({
+      error: "PLAN_REQUIRED",
+      message: "Własny tekst na plakacie dostępny w planie Pro",
+      upgradeUrl: "/panel/subskrypcja",
+    });
+    expect(await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).toMatchObject({ name: "Wesele", posterText: null });
+
+    await setPlan("PRO");
+    const tooLong = await patchEvent(jsonRequest("PATCH", { name: "Nowa", maxRequestsPerGuest: 5, posterText: "x".repeat(81) }), ctx(event.id));
+    expect(tooLong.status).toBe(400);
+    expect((await tooLong.json()).fieldErrors).toEqual({ posterText: "Tekst na plakat może mieć najwyżej 80 znaków." });
+
+    const pro = await patchEvent(jsonRequest("PATCH", { name: "Nowa", maxRequestsPerGuest: 5, posterText: "  Bawimy się do rana!  " }), ctx(event.id));
+    expect(pro.status).toBe(200);
+    expect((await pro.json()).event).toMatchObject({ name: "Nowa", posterText: "Bawimy się do rana!" });
+  });
+});

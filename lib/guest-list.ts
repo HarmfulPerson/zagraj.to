@@ -2,7 +2,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import type { EventStatus } from "@/lib/event-status";
 import { compareQueue } from "@/lib/queue-order";
-import { findGuestEvent } from "@/lib/requests";
+import { findGuestEvent, isEventListFull } from "@/lib/requests";
 
 export { compareQueue };
 
@@ -30,7 +30,8 @@ export type GuestListItem = {
 };
 
 export type GuestList = {
-  event: { status: EventStatus; requestsOpen: boolean };
+  /** `listFull`: the event holds as many tracks as the DJ's plan allows (guests can only like tracks). */
+  event: { status: EventStatus; requestsOpen: boolean; listFull: boolean };
   /** PENDING and ACCEPTED, most votes first, then oldest first. */
   queue: GuestListItem[];
   /** The last `PLAYED_LIST_LIMIT` played tracks, most recently played first. */
@@ -140,7 +141,7 @@ export async function loadGuestListRows(eventId: string, guestId: string | null,
 export async function getGuestList(code: string, guestId: string | null, db: PrismaClient = prisma): Promise<GuestList | null> {
   const event = await findGuestEvent(code, db);
   if (!event) return null;
-  const status = { status: event.status, requestsOpen: event.requestsOpen };
-  if (event.status !== "LIVE") return { event: status, queue: [], played: [] };
-  return { event: status, ...buildGuestList(await loadGuestListRows(event.id, guestId, db), guestId) };
+  if (event.status !== "LIVE") return { event: { status: event.status, requestsOpen: event.requestsOpen, listFull: false }, queue: [], played: [] };
+  const [rows, listFull] = await Promise.all([loadGuestListRows(event.id, guestId, db), isEventListFull(event, db)]);
+  return { event: { status: event.status, requestsOpen: event.requestsOpen, listFull }, ...buildGuestList(rows, guestId) };
 }

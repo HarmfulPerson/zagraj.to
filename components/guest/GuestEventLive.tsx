@@ -8,6 +8,7 @@ import { Brand } from "@/components/guest/Brand";
 import { GuestRequestList } from "@/components/guest/GuestRequestList";
 import { Cover, TrackText } from "@/components/guest/TrackParts";
 import type { Track } from "@/lib/catalog/types";
+import { PLAN_MESSAGES } from "@/lib/plans";
 import type { GuestList, GuestListItem } from "@/lib/guest-list";
 import type { AddRequestOutcome, GuestRequest } from "@/lib/requests";
 
@@ -90,7 +91,8 @@ export function GuestEventLive({ code, name, maxRequests, initialUsed, initialLi
 
   const trimmed = query.trim();
   const searching = trimmed.length >= MIN_QUERY_LENGTH;
-  const canAdd = list.event.requestsOpen;
+  const listFull = list.event.requestsOpen && list.event.listFull;
+  const canAdd = list.event.requestsOpen && !listFull;
   const eventStatus = list.event.status;
 
   // The DJ closed the party (or the event is otherwise no longer LIVE): re-render the page with its message.
@@ -179,7 +181,7 @@ export function GuestEventLive({ code, name, maxRequests, initialUsed, initialLi
     if (response.status === 429) setUsed((current) => Math.max(current, maxRequests));
     // Requests closed or the party ended meanwhile: the fresh list switches to the banner or the page to its message.
     if (response.status === 403) void mutateList();
-    // Already played (or rejected): refresh, so a played track shows up in "Zagrane".
+    // Already played (or rejected): refresh, so a played track shows up in "Zagrane". List full: the banner replaces the search.
     if (response.status === 409) void mutateList();
     show("error", message);
   }
@@ -273,6 +275,11 @@ export function GuestEventLive({ code, name, maxRequests, initialUsed, initialLi
                 ? "Limit wykorzystany. Możesz dalej dodawać głosy na utwory, które już są na liście."
                 : `Możesz dodać jeszcze ${remaining}.`}
             </p>
+          </div>
+        ) : listFull ? (
+          <div role="status" data-testid="guest-list-full" className="mt-4 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-100 ring-1 ring-amber-400/30">
+            <p className="font-semibold">{PLAN_MESSAGES.listFull}</p>
+            <p className="mt-0.5 text-amber-100/80">{PLAN_MESSAGES.listFullDetails}</p>
           </div>
         ) : (
           <div role="status" data-testid="guest-requests-closed" className="mt-4 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-100 ring-1 ring-amber-400/30">
