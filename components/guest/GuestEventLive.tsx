@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 
+import { ConnectionBanner, useOnline } from "@/components/ConnectionBanner";
 import { Brand } from "@/components/guest/Brand";
 import { GuestRequestList } from "@/components/guest/GuestRequestList";
 import { Cover, TrackText } from "@/components/guest/TrackParts";
@@ -78,6 +79,8 @@ export function GuestEventLive({ code, name, maxRequests, initialUsed, initialLi
     revalidateOnFocus: true,
     keepPreviousData: true,
   });
+  const online = useOnline();
+  const connectionLost = !online || listError !== undefined;
   const pendingVotes = useRef(new Set<string>());
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<SearchResult | null>(null);
@@ -227,7 +230,7 @@ export function GuestEventLive({ code, name, maxRequests, initialUsed, initialLi
   const loading = searching && result?.query !== trimmed;
   const shownResult = searching ? result : null;
   const requestList = (
-    <GuestRequestList list={list} stale={listError !== undefined} requestsOpen={canAdd} onToggleVote={toggleVote} />
+    <GuestRequestList list={list} requestsOpen={canAdd} onToggleVote={toggleVote} />
   );
 
   return (
@@ -235,7 +238,7 @@ export function GuestEventLive({ code, name, maxRequests, initialUsed, initialLi
       <header>
         <div className="flex items-center justify-between gap-3">
           <Brand />
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-400/25 ring-inset">
+          <span hidden={connectionLost} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-400/25 ring-inset">
             <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
             Na żywo
           </span>
@@ -320,7 +323,7 @@ export function GuestEventLive({ code, name, maxRequests, initialUsed, initialLi
                     requestAnimationFrame(() => searchBarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
                   }}
                   placeholder="Tytuł lub wykonawca"
-                  className="h-14 w-full rounded-2xl bg-zinc-900 pr-14 pl-12 text-base text-white ring-1 ring-zinc-700 transition outline-none placeholder:text-zinc-500 focus:ring-2 focus:ring-violet-400 [&::-webkit-search-cancel-button]:hidden"
+                  className="h-14 w-full rounded-2xl bg-zinc-900 pr-14 pl-12 text-base text-white ring-1 ring-zinc-700 transition outline-none placeholder:text-zinc-400 focus:ring-2 focus:ring-violet-400 [&::-webkit-search-cancel-button]:hidden"
                 />
                 {loading ? (
                   <span aria-hidden className="absolute top-1/2 right-4 size-5 -translate-y-1/2 animate-spin rounded-full border-2 border-zinc-600 border-t-violet-300" />
@@ -389,40 +392,44 @@ export function GuestEventLive({ code, name, maxRequests, initialUsed, initialLi
       {!canAdd ? requestList : null}
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <div aria-live="polite" role="status" className="w-full max-w-lg">
-          {notice ? (
-            <div
-              key={notice.id}
-              data-testid="guest-notice"
-              className={`pointer-events-auto flex items-start gap-3 rounded-2xl px-4 py-3.5 text-[0.95rem] leading-snug font-medium shadow-2xl shadow-black/60 ring-1 ${
-                notice.kind === "error"
-                  ? "bg-zinc-900 text-red-100 ring-red-400/40"
-                  : notice.kind === "success"
-                    ? "bg-zinc-900 text-emerald-50 ring-emerald-400/40"
-                    : "bg-zinc-900 text-violet-50 ring-violet-400/40"
-              }`}
-            >
-              <span
-                aria-hidden
-                className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-xs font-bold text-zinc-950 ${
-                  notice.kind === "error" ? "bg-red-400" : notice.kind === "success" ? "bg-emerald-400" : "bg-violet-300"
+        <div className="flex w-full max-w-lg flex-col gap-2">
+          {/* Quiet, thumb-level notice; the list stays readable. Disappears once a refresh succeeds. */}
+          <ConnectionBanner show={connectionLost} />
+          <div aria-live="polite" role="status">
+            {notice ? (
+              <div
+                key={notice.id}
+                data-testid="guest-notice"
+                className={`pointer-events-auto flex items-start gap-3 rounded-2xl px-4 py-3.5 text-[0.95rem] leading-snug font-medium shadow-2xl shadow-black/60 ring-1 ${
+                  notice.kind === "error"
+                    ? "bg-zinc-900 text-red-100 ring-red-400/40"
+                    : notice.kind === "success"
+                      ? "bg-zinc-900 text-emerald-50 ring-emerald-400/40"
+                      : "bg-zinc-900 text-violet-50 ring-violet-400/40"
                 }`}
               >
-                {notice.kind === "error" ? "!" : "✓"}
-              </span>
-              <span className="min-w-0 flex-1 break-words">{notice.text}</span>
-              <button
-                type="button"
-                onClick={() => setNotice(null)}
-                aria-label="Zamknij komunikat"
-                className="-my-2.5 -mr-2 grid size-11 shrink-0 place-items-center rounded-xl text-zinc-400 hover:text-white"
-              >
-                <svg aria-hidden viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <path d="M6 6l12 12M18 6 6 18" />
-                </svg>
-              </button>
-            </div>
-          ) : null}
+                <span
+                  aria-hidden
+                  className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-xs font-bold text-zinc-950 ${
+                    notice.kind === "error" ? "bg-red-400" : notice.kind === "success" ? "bg-emerald-400" : "bg-violet-300"
+                  }`}
+                >
+                  {notice.kind === "error" ? "!" : "✓"}
+                </span>
+                <span className="min-w-0 flex-1 break-words">{notice.text}</span>
+                <button
+                  type="button"
+                  onClick={() => setNotice(null)}
+                  aria-label="Zamknij komunikat"
+                  className="-my-2.5 -mr-2 grid size-11 shrink-0 place-items-center rounded-xl text-zinc-400 hover:text-white"
+                >
+                  <svg aria-hidden viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M6 6l12 12M18 6 6 18" />
+                  </svg>
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </main>

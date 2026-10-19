@@ -5,15 +5,13 @@ import type { ReactNode } from "react";
 import { PhoneMock, QrCard } from "@/components/site/Illustrations";
 import { focusRing, primaryButton, secondaryButton } from "@/components/site/styles";
 import { PLAN_LIMITS, formatEventAllowance } from "@/lib/plans";
-import { PRICING_PATH, REGISTER_PATH, SITE_DESCRIPTION, publicPageMetadata } from "@/lib/site";
+import { HERO_TITLE, PRICING_PATH, REGISTER_PATH, SITE_DESCRIPTION, publicPageMetadata } from "@/lib/site";
 
 export const metadata: Metadata = publicPageMetadata({
   title: "ZagrajTo – życzenia muzyczne od gości na weselu",
   description: SITE_DESCRIPTION,
   path: "/",
 });
-
-const HERO_TITLE = "Wiesz, czego chce sala, zanim ktoś podejdzie do konsoli.";
 
 const free = PLAN_LIMITS.FREE;
 const pro = PLAN_LIMITS.PRO;
@@ -150,7 +148,7 @@ export default function Home() {
               </Link>
             </div>
             <p className="mt-4 text-sm text-zinc-400">
-              Plan {free.name}: {freeEventsLabel} za {free.priceLabel}. Bez karty płatniczej.
+              Plan {free.name} za {free.priceLabel}: {freeEventsLabel}. Bez karty płatniczej.
             </p>
           </div>
           <div className="relative mx-auto flex w-full max-w-md justify-center sm:justify-end sm:pr-6 lg:max-w-none lg:pr-10">

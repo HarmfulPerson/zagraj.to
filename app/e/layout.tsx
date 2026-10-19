@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
+import { DARK_THEME_COLOR } from "@/lib/app";
+
 export const metadata: Metadata = {
   title: "Życzenia muzyczne | ZagrajTo",
   robots: { index: false },
@@ -7,7 +9,7 @@ export const metadata: Metadata = {
 
 // Guests use the page in a dark room: dark browser chrome and form controls.
 export const viewport: Viewport = {
-  themeColor: "#09090b",
+  themeColor: DARK_THEME_COLOR,
   colorScheme: "dark",
 };
 

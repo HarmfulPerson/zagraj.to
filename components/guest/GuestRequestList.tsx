@@ -16,14 +16,12 @@ export const votesLabel = (count: number) => polishPlural(count, "głos", "głos
 
 type Props = {
   list: GuestList;
-  /** The last refresh failed; the shown list may be out of date. */
-  stale: boolean;
   requestsOpen: boolean;
   onToggleVote: (item: GuestListItem) => void;
 };
 
 /** The live wish list for guests: the queue by votes with hearts, then the "Zagrane" section. */
-export function GuestRequestList({ list, stale, requestsOpen, onToggleVote }: Props) {
+export function GuestRequestList({ list, requestsOpen, onToggleVote }: Props) {
   return (
     <div className="mt-5" data-testid="guest-list">
       <section aria-labelledby="queue-heading">
@@ -31,15 +29,10 @@ export function GuestRequestList({ list, stale, requestsOpen, onToggleVote }: Pr
           <h2 id="queue-heading" className="text-sm font-semibold tracking-wide text-zinc-400 uppercase">
             Lista życzeń
           </h2>
-          <span className="text-xs text-zinc-500 tabular-nums">
+          <span className="text-xs text-zinc-400 tabular-nums">
             {list.queue.length > 0 ? polishPlural(list.queue.length, "utwór", "utwory", "utworów") : null}
           </span>
         </div>
-        {stale ? (
-          <p role="status" className="mt-2 rounded-xl bg-amber-400/10 px-3 py-2 text-xs text-amber-100 ring-1 ring-amber-400/25">
-            Nie udało się odświeżyć listy. Próbujemy dalej…
-          </p>
-        ) : null}
 
         {list.queue.length === 0 ? (
           <div className="mt-3 rounded-2xl border border-dashed border-zinc-800 px-5 py-8 text-center" data-testid="guest-list-empty">
@@ -148,14 +141,14 @@ function PlayedRow({ item }: { item: GuestListItem }) {
         <p className="truncate text-[0.95rem] font-medium text-zinc-300" title={item.title}>
           {item.title}
         </p>
-        <p className="truncate text-sm text-zinc-500">{item.artist}</p>
+        <p className="truncate text-sm text-zinc-400">{item.artist}</p>
         {item.mine ? (
           <div className="mt-1 flex">
             <MineBadge />
           </div>
         ) : null}
       </div>
-      <span className="shrink-0 text-xs text-zinc-500 tabular-nums">{votesLabel(item.votes)}</span>
+      <span className="shrink-0 text-xs text-zinc-400 tabular-nums">{votesLabel(item.votes)}</span>
     </li>
   );
 }

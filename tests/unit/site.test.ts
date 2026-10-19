@@ -12,6 +12,11 @@ describe("publicPageMetadata", () => {
       openGraph: { type: "website", locale: "pl_PL", siteName: "ZagrajTo", title: "Cennik | ZagrajTo", description: "Opis", url: "/cennik" },
     });
   });
+
+  it("asks for a large card: the shared image comes from app/(site)/opengraph-image.tsx", () => {
+    const metadata = publicPageMetadata({ title: "ZagrajTo", description: "Opis", path: "/" });
+    expect(metadata.twitter).toMatchObject({ card: "summary_large_image", title: "ZagrajTo", description: "Opis" });
+  });
 });
 
 describe("planCta", () => {

@@ -9,7 +9,7 @@ import { PRICING_PATH, REGISTER_PATH } from "@/lib/site";
 const textLink = `inline-flex min-h-11 items-center rounded-full px-2 text-sm font-medium text-zinc-300 transition hover:text-white sm:px-3 ${focusRing}`;
 const buttonLink = `inline-flex min-h-10 items-center rounded-full bg-lime-300 px-3 text-sm font-semibold whitespace-nowrap text-zinc-950 transition hover:bg-lime-200 sm:px-4 ${focusRing}`;
 
-/** Links for visitors without a session. Also the static fallback while the session is read. */
+/** Links for visitors without a session. */
 function GuestLinks() {
   return (
     <>
@@ -45,7 +45,8 @@ export function SiteHeader() {
           <Link href={PRICING_PATH} className={textLink}>
             Cennik
           </Link>
-          <Suspense fallback={<GuestLinks />}>
+          {/* Neutral placeholder while the session streams in: a logged-in DJ never sees "Zaloguj" flash by. */}
+          <Suspense fallback={<span aria-hidden data-testid="site-account-placeholder" className="ml-1 inline-block h-10 w-36 rounded-full bg-white/5 sm:w-44" />}>
             <AccountLinks />
           </Suspense>
         </nav>

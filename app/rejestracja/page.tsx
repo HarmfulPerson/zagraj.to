@@ -17,7 +17,7 @@ async function PlanIntentField({ searchParams }: { searchParams: PageProps<"/rej
     <>
       <input type="hidden" name={REGISTER_PLAN_PARAM} value={intent} />
       <p className="rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-900 dark:bg-violet-500/10 dark:text-violet-200" data-testid="register-plan-intent">
-        Po założeniu konta przejdziesz do aktywacji planu {PLAN_LIMITS.PRO.name}.
+        Po założeniu konta przejdziesz do aktywacji planu {PLAN_LIMITS.PRO.name} (płatność w następnym kroku).
       </p>
     </>
   );

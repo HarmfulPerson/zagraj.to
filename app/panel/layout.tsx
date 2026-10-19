@@ -1,10 +1,19 @@
+import type { Viewport } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
 import { logoutAction } from "@/app/auth-actions";
-import { APP_NAME, SUBSCRIPTION_PATH } from "@/lib/app";
+import { APP_NAME, PANEL_DARK_HEADER_COLOR, SUBSCRIPTION_PATH } from "@/lib/app";
 import { requireDj } from "@/lib/auth";
 import { getPlanLimits } from "@/lib/plans";
+
+// Browser chrome matches the panel header (white, or zinc-900 in dark mode). The live board overrides it (always dark).
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: PANEL_DARK_HEADER_COLOR },
+  ],
+};
 
 async function DjMenu() {
   const dj = await requireDj();

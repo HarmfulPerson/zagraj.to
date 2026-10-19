@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -11,7 +11,7 @@ import { EventStatusControls } from "@/components/panel/EventStatusControls";
 import { ExportControls } from "@/components/panel/ExportControls";
 import { QrCode } from "@/components/panel/QrCode";
 import { formatEventDate } from "@/components/panel/StatusBadge";
-import { eventPosterPath } from "@/lib/app";
+import { eventPosterPath, PANEL_DARK_HEADER_COLOR } from "@/lib/app";
 import { requireDj } from "@/lib/auth";
 import { buildBoardColumns, loadBoardRows } from "@/lib/dj-board";
 import { formatRequestCount } from "@/lib/event-status";
@@ -21,6 +21,8 @@ import { canCustomizePoster, canExport, type Plan } from "@/lib/plans";
 import { buildGuestEventUrl } from "@/lib/guest-url";
 
 export const metadata: Metadata = { title: "Tablica na żywo | ZagrajTo" };
+// The board is always dark (dark club), whatever the system theme.
+export const viewport: Viewport = { themeColor: PANEL_DARK_HEADER_COLOR, colorScheme: "dark" };
 
 const card = "rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900";
 const label = "text-xs font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400";

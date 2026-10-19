@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import useSWR from "swr";
 
+import { ConnectionBanner, useOnline } from "@/components/ConnectionBanner";
 import { BoardCard } from "@/components/panel/board/BoardCard";
 import { useNewHighlights } from "@/components/panel/board/useNewHighlights";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { boardIds, moveBoardItem } from "@/lib/board-view";
 import type { BoardItem, DjBoard as DjBoardData } from "@/lib/dj-board";
+import { polishPlural } from "@/lib/plans";
 import { availableRequestActions, type RequestStatus } from "@/lib/request-status";
 
 /** The board is refreshed this often while the event is LIVE (SPEC: polling every 3 s). */
@@ -105,6 +107,8 @@ export function DjBoard({ eventId, name, code, initialBoard, manage }: Props) {
   }, [status, serverStatus, router]);
 
   const live = status === "LIVE";
+  const online = useOnline();
+  const connectionLost = !online || error !== undefined;
   const now = useSyncExternalStore(subscribeNow, getNow, getServerNow);
   const { isNew, newCount, dismiss } = useNewHighlights(eventId, boardIds(board));
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
@@ -219,7 +223,7 @@ export function DjBoard({ eventId, name, code, initialBoard, manage }: Props) {
           </div>
 
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            {live ? <LiveIndicator stale={error !== undefined} newCount={newCount} /> : null}
+            {live ? <LiveIndicator connectionLost={connectionLost} newCount={newCount} /> : <ConnectionBanner show={!online} variant="inline" />}
             {status !== "CLOSED" ? (
               <RequestsSwitch open={board.event.requestsOpen} pending={togglePending} onToggle={toggleRequests} />
             ) : null}
@@ -281,7 +285,7 @@ export function DjBoard({ eventId, name, code, initialBoard, manage }: Props) {
                     </span>
                   </div>
                   {items.length === 0 ? (
-                    <p className="rounded-2xl border border-dashed border-zinc-800 px-4 py-6 text-center text-sm text-zinc-500">{column.empty}</p>
+                    <p className="rounded-2xl border border-dashed border-zinc-800 px-4 py-6 text-center text-sm text-zinc-400">{column.empty}</p>
                   ) : (
                     <ol className="space-y-2">{items.map((item) => renderCard(item, column.muted ?? false))}</ol>
                   )}
@@ -299,12 +303,12 @@ export function DjBoard({ eventId, name, code, initialBoard, manage }: Props) {
               <span data-testid="column-count" className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-sm font-bold text-zinc-300 tabular-nums">
                 {rejected.length}
               </span>
-              <span className="ml-auto text-sm text-zinc-500 group-open:hidden">Pokaż</span>
-              <span className="ml-auto hidden text-sm text-zinc-500 group-open:inline">Ukryj</span>
+              <span className="ml-auto text-sm text-zinc-400 group-open:hidden">Pokaż</span>
+              <span className="ml-auto hidden text-sm text-zinc-400 group-open:inline">Ukryj</span>
             </summary>
             <div className="px-3 pb-3">
               {rejected.length === 0 ? (
-                <p className="px-1 pb-1 text-sm text-zinc-500">Nic nie odrzucono.</p>
+                <p className="px-1 pb-1 text-sm text-zinc-400">Nic nie odrzucono.</p>
               ) : (
                 <ol aria-labelledby={rejectedId} className="grid gap-2 md:grid-cols-3">
                   {rejected.map((item) => renderCard(item, true))}
@@ -334,26 +338,25 @@ function showFirstNew() {
   document.querySelector('[data-new="true"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-function LiveIndicator({ stale, newCount }: { stale: boolean; newCount: number }) {
+function LiveIndicator({ connectionLost, newCount }: { connectionLost: boolean; newCount: number }) {
   return (
-    <div className="flex items-center gap-2" aria-live="polite">
-      {newCount > 0 ? (
-        <button
-          type="button"
-          data-testid="new-count"
-          onClick={showFirstNew}
-          title="Pokaż nowe życzenie"
-          className="min-h-10 rounded-full bg-amber-400 px-3 text-sm font-black text-zinc-950 tabular-nums transition hover:bg-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
-        >
-          {newCount} {newCount === 1 ? "nowe" : "nowych"} ↓
-        </button>
-      ) : null}
-      {stale ? (
-        <span role="status" className="rounded-full bg-amber-400/15 px-2.5 py-1 text-sm font-semibold text-amber-200 ring-1 ring-amber-400/30 ring-inset">
-          Brak połączenia, ponawiam…
-        </span>
-      ) : (
-        <span className="hidden items-center gap-1.5 text-sm text-zinc-500 lg:inline-flex">
+    <div className="flex items-center gap-2">
+      <span aria-live="polite">
+        {newCount > 0 ? (
+          <button
+            type="button"
+            data-testid="new-count"
+            onClick={showFirstNew}
+            title="Pokaż nowe życzenie"
+            className="min-h-10 rounded-full bg-amber-400 px-3 text-sm font-black text-zinc-950 tabular-nums transition hover:bg-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+          >
+            {newCount} {polishPlural(newCount, "nowe", "nowe", "nowych")} <span aria-hidden>↓</span>
+          </button>
+        ) : null}
+      </span>
+      <ConnectionBanner show={connectionLost} variant="inline" />
+      {connectionLost ? null : (
+        <span className="hidden items-center gap-1.5 text-sm text-zinc-400 lg:inline-flex">
           <span aria-hidden className="size-2 animate-pulse rounded-full bg-emerald-400" />
           Na żywo
         </span>

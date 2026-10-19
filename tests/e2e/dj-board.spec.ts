@@ -43,7 +43,7 @@ test("guest adds → DJ sees it with votes → Zagrane → guest sees it in Zagr
   await expect(card(page, "PENDING", "Szampan").getByTestId("board-votes")).toHaveText("1");
   await expect(column(page, "PENDING").getByTestId("board-title")).toHaveText(["Dancing Queen", "Szampan"]);
   await expect(dancing).toHaveAttribute("data-new", "true");
-  await expect(page.getByTestId("new-count")).toContainText("2 nowych");
+  await expect(page.getByTestId("new-count")).toContainText("2 nowe");
   const spotify = dancing.getByRole("link", { name: /Otwórz w Spotify/ });
   await expect(spotify).toHaveAttribute("href", "https://open.spotify.com/search/ABBA%20Dancing%20Queen");
   await expect(spotify).toHaveAttribute("target", "_blank");

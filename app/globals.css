@@ -17,6 +17,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Keyboard focus ring for links, buttons and summaries without their own focus style (WCAG 2.4.7). */
+  --focus-ring: #6d28d9;
 }
 
 @theme inline {
@@ -28,6 +30,24 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --focus-ring: #a78bfa;
+  }
+}
+
+/* Always-dark screens; set on body so headers outside the themed wrapper get it too. */
+body:has(.guest-theme),
+body:has(.dj-board-theme) {
+  --focus-ring: #a78bfa;
+}
+
+body:has(.site-theme) {
+  --focus-ring: #bef264;
+}
+
+@layer base {
+  :where(a[href], button, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 }
 

@@ -3,8 +3,8 @@ import Link from "next/link";
 import { Logo } from "@/components/site/Logo";
 import { focusRing } from "@/components/site/styles";
 import { APP_TAGLINE } from "@/lib/app";
-import { LOGIN_PATH } from "@/lib/auth";
-import { PRICING_PATH, REGISTER_PATH } from "@/lib/site";
+import { PANEL_PATH } from "@/lib/auth";
+import { PRICING_PATH } from "@/lib/site";
 
 const footerLink = `rounded text-sm text-zinc-400 transition hover:text-white ${focusRing}`;
 
@@ -24,13 +24,9 @@ export function SiteFooter() {
               </Link>
             </li>
             <li>
-              <Link href={LOGIN_PATH} className={footerLink}>
-                Zaloguj się
-              </Link>
-            </li>
-            <li>
-              <Link href={REGISTER_PATH} className={footerLink}>
-                Załóż konto
+              {/* Static footer, the same for everyone: the panel asks visitors to sign in. */}
+              <Link href={PANEL_PATH} className={footerLink}>
+                Panel DJ-a
               </Link>
             </li>
           </ul>

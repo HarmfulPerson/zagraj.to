@@ -9,6 +9,9 @@ export const REGISTER_PATH = "/rejestracja";
 /** Same as `PANEL_PATH` in lib/auth.ts (not imported: that module pulls in the database client). */
 const PANEL_HOME_PATH = "/panel";
 
+/** The landing's promise: hero heading and the shared (Open Graph) image. */
+export const HERO_TITLE = "Wiesz, czego chce sala, zanim ktoś podejdzie do konsoli.";
+
 export const SITE_DESCRIPTION =
   "Goście skanują kod QR, dodają utwory i lajkują propozycje innych. DJ widzi na żywo, czego chce sala. Bez aplikacji i bez logowania dla gości.";
 
@@ -29,7 +32,8 @@ export function publicPageMetadata({ title, description, path }: { title: string
       description,
       url: path,
     },
-    twitter: { card: "summary", title, description },
+    // The image itself comes from app/(site)/opengraph-image.tsx (file-based metadata).
+    twitter: { card: "summary_large_image", title, description },
   };
 }
 

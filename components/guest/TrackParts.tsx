@@ -75,7 +75,7 @@ export function TrackText({ title, artist, durationSec }: { title: string; artis
       </p>
       <p className="truncate text-sm text-zinc-400">
         {artist}
-        {duration ? <span className="text-zinc-500"> · {duration}</span> : null}
+        {duration ? <span className="text-zinc-400"> · {duration}</span> : null}
       </p>
     </div>
   );

@@ -39,8 +39,11 @@ export function setDjPlan(email: string, plan: "FREE" | "PRO", planRenewsAt: Dat
   });
 }
 
-/** Adds `count` PENDING requests from made-up guests to the event with the given code (e.g. to fill a Free list). */
-export function seedRequests(code: string, count: number): void {
+/**
+ * Adds `count` PENDING requests from made-up guests to the event with the given code (e.g. to fill a Free list).
+ * `from` numbers the tracks, so a later call can add more without clashing with the earlier ones.
+ */
+export function seedRequests(code: string, count: number, from = 0): void {
   withDb((db) => {
     const event = db.prepare(`SELECT "id" FROM "Event" WHERE "code" = ?`).get(code) as { id: string } | undefined;
     if (!event) throw new Error(`seedRequests: no event ${code}`);
@@ -48,9 +51,9 @@ export function seedRequests(code: string, count: number): void {
       `INSERT INTO "Request" ("id", "eventId", "trackId", "title", "artist", "status", "createdByGuestId", "createdAt")
        VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)`,
     );
-    const base = Date.now() - count * 1000;
+    const base = Date.now() - (from + count) * 1000;
     db.transaction(() => {
-      for (let i = 0; i < count; i++) {
+      for (let i = from; i < from + count; i++) {
         const createdAt = sqliteDate(new Date(base + i * 1000));
         insert.run(randomUUID(), event.id, `seed-${i}`, `Utwór ${i + 1}`, "Wykonawca", `seed-guest-${i}`, createdAt);
       }

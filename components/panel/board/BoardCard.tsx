@@ -20,7 +20,7 @@ type Props = {
 };
 
 const ACTION_STYLES: Record<RequestStatus, string> = {
-  ACCEPTED: "bg-emerald-600 text-white hover:bg-emerald-500 focus-visible:outline-emerald-400",
+  ACCEPTED: "bg-emerald-700 text-white hover:bg-emerald-600 focus-visible:outline-emerald-400",
   PLAYED: "bg-violet-600 text-white hover:bg-violet-500 focus-visible:outline-violet-400",
   REJECTED: "bg-zinc-800 text-red-300 ring-1 ring-inset ring-zinc-700 hover:bg-red-950 hover:text-red-200 focus-visible:outline-red-400",
   PENDING: "bg-zinc-800 text-zinc-200 ring-1 ring-inset ring-zinc-700 hover:bg-zinc-700 focus-visible:outline-zinc-300",
@@ -119,15 +119,15 @@ export function BoardCard({ item, actions, isNew, pending, now, muted = false, o
             ) : null}
             <span data-testid="board-title">{item.title}</span>
           </p>
-          <p className={`mt-0.5 truncate ${muted ? "text-sm text-zinc-500" : "text-base text-zinc-400"}`} title={item.artist}>
+          <p className={`mt-0.5 truncate ${muted ? "text-sm text-zinc-400" : "text-base text-zinc-400"}`} title={item.artist}>
             {item.artist}
           </p>
           <div className="mt-0.5 flex min-w-0 items-center gap-1 text-sm">
-            <svg aria-hidden viewBox="0 0 24 24" className="size-3.5 shrink-0 text-zinc-600" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <svg aria-hidden viewBox="0 0 24 24" className="size-3.5 shrink-0 text-zinc-500" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <circle cx="12" cy="12" r="9" />
               <path d="M12 7v5l3 2" />
             </svg>
-            <time dateTime={item.createdAt} className="min-w-0 truncate text-zinc-500 tabular-nums" suppressHydrationWarning>
+            <time dateTime={item.createdAt} className="min-w-0 truncate text-zinc-400 tabular-nums" suppressHydrationWarning>
               {now === null ? (
                 "\u00a0"
               ) : (

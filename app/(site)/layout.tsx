@@ -1,5 +1,10 @@
+import type { Viewport } from "next";
+
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
+import { DARK_THEME_COLOR } from "@/lib/app";
+
+export const viewport: Viewport = { themeColor: DARK_THEME_COLOR, colorScheme: "dark" };
 
 /** Public marketing pages (landing, pricing): always dark, with the shared header and footer. */
 export default function SiteLayout({ children }: LayoutProps<"/">) {
