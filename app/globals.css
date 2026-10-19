@@ -72,7 +72,10 @@ body {
   }
 }
 
-/* Guest pages (/e/[code]) and the DJ board are always dark, also behind overscroll on phones. */
+/* Guest pages (/e/[code]), the DJ board and the public site (landing, pricing) are always dark,
+   also behind overscroll on phones. */
+html:has(.site-theme),
+body:has(.site-theme),
 html:has(.guest-theme),
 body:has(.guest-theme),
 html:has(.dj-board-theme),

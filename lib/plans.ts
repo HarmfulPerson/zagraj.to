@@ -27,36 +27,68 @@ export type PlanLimits = {
   canCustomizePoster: boolean;
 };
 
+type PlanRules = Pick<PlanLimits, "maxEventStartsPerMonth" | "maxRequestsPerEvent" | "canExport" | "canCustomizePoster">;
+type PlanDefinition = Omit<PlanLimits, "features">;
+
+/** Polish plural form for a count: 1 wydarzenie, 2–4 wydarzenia, 5+ (and 12–14) wydarzeń. */
+export function polishPlural(count: number, one: string, few: string, many: string): string {
+  if (count === 1) return one;
+  const lastDigit = count % 10;
+  const lastTwo = count % 100;
+  return lastDigit >= 2 && lastDigit <= 4 && (lastTwo < 12 || lastTwo > 14) ? few : many;
+}
+
+/** "1 wydarzenie w miesiącu", "3 wydarzenia w miesiącu", or "Bez limitu wydarzeń" for null. */
+export function formatEventAllowance(maxEventStartsPerMonth: number | null): string {
+  const n = maxEventStartsPerMonth;
+  return n === null ? "Bez limitu wydarzeń" : `${n} ${polishPlural(n, "wydarzenie", "wydarzenia", "wydarzeń")} w miesiącu`;
+}
+
+/**
+ * Feature bullets derived from the plan's limits, so the pricing page and the subscription page can never disagree
+ * with what the app actually enforces.
+ */
+export function describePlanFeatures(rules: PlanRules): string[] {
+  const requests = rules.maxRequestsPerEvent;
+  return [
+    formatEventAllowance(rules.maxEventStartsPerMonth),
+    requests === null ? "Bez limitu życzeń" : `Do ${requests} ${requests === 1 ? "życzenia" : "życzeń"} na wydarzenie`,
+    ...(rules.canExport ? ["Eksport listy do CSV i jako tekst"] : []),
+    rules.canCustomizePoster ? "Własny tekst na plakacie" : "Kod QR i plakat do druku",
+    "Tablica na żywo i głosowanie gości",
+  ];
+}
+
+const withFeatures = (plan: PlanDefinition): PlanLimits => ({ ...plan, features: describePlanFeatures(plan) });
+
 export const PLAN_LIMITS: Readonly<Record<Plan, PlanLimits>> = {
-  FREE: {
+  FREE: withFeatures({
     name: "Free",
     priceMonthlyPln: 0,
     priceLabel: "0 zł",
     tagline: "Na pierwszą imprezę i do sprawdzenia, jak to działa.",
-    features: ["1 wydarzenie w miesiącu", "Do 100 życzeń na wydarzenie", "Kod QR i plakat do druku", "Tablica na żywo i głosowanie gości"],
     maxEventStartsPerMonth: 1,
     maxRequestsPerEvent: 100,
     canExport: false,
     canCustomizePoster: false,
-  },
-  PRO: {
+  }),
+  PRO: withFeatures({
     name: "Pro",
     priceMonthlyPln: 25,
     priceLabel: "25 zł/mies.",
     tagline: "Dla DJ-ów, którzy grają co weekend.",
-    features: [
-      "Bez limitu wydarzeń",
-      "Bez limitu życzeń",
-      "Eksport listy do CSV i jako tekst",
-      "Własny tekst na plakacie",
-      "Tablica na żywo i głosowanie gości",
-    ],
     maxEventStartsPerMonth: null,
     maxRequestsPerEvent: null,
     canExport: true,
     canCustomizePoster: true,
-  },
+  }),
 };
+
+/** Splits a price label for display: "25 zł/mies." → { amount: "25 zł", period: "/mies." }; "0 zł" has no period. */
+export function splitPriceLabel(label: string): { amount: string; period: string } {
+  const slash = label.indexOf("/");
+  return slash === -1 ? { amount: label, period: "" } : { amount: label.slice(0, slash), period: label.slice(slash) };
+}
 
 /** Calendar months for the start limit are counted in Polish time, not UTC (a party starting at 00:30 on the 1st is in the new month). */
 export const PLAN_TIME_ZONE = "Europe/Warsaw";

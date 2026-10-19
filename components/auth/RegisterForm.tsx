@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, type ReactNode } from "react";
 
 import { registerAction, type RegisterFormState } from "@/app/auth-actions";
 import { FormField, SubmitButton } from "@/components/auth/FormField";
@@ -8,7 +8,8 @@ import { PASSWORD_MIN_LENGTH } from "@/lib/auth-validation";
 
 const initialState: RegisterFormState = {};
 
-export function RegisterForm() {
+/** `children` are extra form fields rendered before the submit button (e.g. the hidden plan chosen on the pricing page). */
+export function RegisterForm({ children }: { children?: ReactNode }) {
   const [state, formAction, pending] = useActionState(registerAction, initialState);
   const errors = state.fieldErrors ?? {};
 
@@ -44,6 +45,7 @@ export function RegisterForm() {
         error={errors.password}
         hint={`Co najmniej ${PASSWORD_MIN_LENGTH} znaków.`}
       />
+      {children}
       <SubmitButton pending={pending} pendingLabel="Zakładanie konta…">
         Załóż konto
       </SubmitButton>

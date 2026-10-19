@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { endDjSession, LOGIN_PATH, PANEL_PATH, startDjSession } from "@/lib/auth";
 import { firstFieldErrors, loginSchema, registerSchema, type FieldErrors } from "@/lib/auth-validation";
 import { authenticateDj, registerDj } from "@/lib/dj-accounts";
+import { parseRegisterPlanIntent, postRegisterPath, REGISTER_PLAN_PARAM } from "@/lib/site";
 
 export type RegisterFormState = {
   fieldErrors?: FieldErrors<{ email: string; displayName: string; password: string }>;
@@ -36,7 +37,7 @@ export async function registerAction(_prev: RegisterFormState, formData: FormDat
   if (!result.ok) return { fieldErrors: { email: EMAIL_TAKEN_MESSAGE }, values };
 
   await startDjSession(result.dj.id);
-  redirect(PANEL_PATH);
+  redirect(postRegisterPath(parseRegisterPlanIntent(formData.get(REGISTER_PLAN_PARAM))));
 }
 
 export async function loginAction(_prev: LoginFormState, formData: FormData): Promise<LoginFormState> {

@@ -5,11 +5,14 @@ import {
   canCustomizePoster,
   canExport,
   canStartEvent,
+  describePlanFeatures,
   getPlanLimits,
   PLAN_LIMITS,
   PLAN_MESSAGES,
   planMonthKey,
   planMonthRange,
+  polishPlural,
+  splitPriceLabel,
 } from "@/lib/plans";
 
 const FREE = { plan: "FREE" as const };
@@ -36,6 +39,64 @@ describe("PLAN_LIMITS", () => {
       canCustomizePoster: true,
     });
     for (const plan of Object.values(PLAN_LIMITS)) expect(plan.features.length).toBeGreaterThan(0);
+  });
+});
+
+describe("plan display data", () => {
+  it("keeps the current Polish bullets, derived from the limits", () => {
+    expect(PLAN_LIMITS.FREE.features).toEqual([
+      "1 wydarzenie w miesiącu",
+      "Do 100 życzeń na wydarzenie",
+      "Kod QR i plakat do druku",
+      "Tablica na żywo i głosowanie gości",
+    ]);
+    expect(PLAN_LIMITS.PRO.features).toEqual([
+      "Bez limitu wydarzeń",
+      "Bez limitu życzeń",
+      "Eksport listy do CSV i jako tekst",
+      "Własny tekst na plakacie",
+      "Tablica na żywo i głosowanie gości",
+    ]);
+  });
+
+  it("follows the limit values when they change (no hardcoded numbers)", () => {
+    const rules = { maxEventStartsPerMonth: 3, maxRequestsPerEvent: 250, canExport: true, canCustomizePoster: false };
+    expect(describePlanFeatures(rules)).toEqual([
+      "3 wydarzenia w miesiącu",
+      "Do 250 życzeń na wydarzenie",
+      "Eksport listy do CSV i jako tekst",
+      "Kod QR i plakat do druku",
+      "Tablica na żywo i głosowanie gości",
+    ]);
+    expect(describePlanFeatures({ ...rules, maxEventStartsPerMonth: 5, maxRequestsPerEvent: 1 }).slice(0, 2)).toEqual([
+      "5 wydarzeń w miesiącu",
+      "Do 1 życzenia na wydarzenie",
+    ]);
+  });
+
+  it("polishPlural picks 1 / 2–4 / 5+ forms, with 12–14 as many", () => {
+    const form = (n: number) => polishPlural(n, "wydarzenie", "wydarzenia", "wydarzeń");
+    expect([1, 2, 4, 5, 11, 12, 14, 22, 25, 102].map(form)).toEqual([
+      "wydarzenie",
+      "wydarzenia",
+      "wydarzenia",
+      "wydarzeń",
+      "wydarzeń",
+      "wydarzeń",
+      "wydarzeń",
+      "wydarzenia",
+      "wydarzeń",
+      "wydarzenia",
+    ]);
+  });
+
+  it("splitPriceLabel separates the amount from the billing period without losing text", () => {
+    expect(splitPriceLabel(PLAN_LIMITS.PRO.priceLabel)).toEqual({ amount: "25 zł", period: "/mies." });
+    expect(splitPriceLabel(PLAN_LIMITS.FREE.priceLabel)).toEqual({ amount: "0 zł", period: "" });
+    for (const plan of Object.values(PLAN_LIMITS)) {
+      const { amount, period } = splitPriceLabel(plan.priceLabel);
+      expect(amount + period).toBe(plan.priceLabel);
+    }
   });
 });
 
