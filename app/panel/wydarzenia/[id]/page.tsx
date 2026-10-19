@@ -8,6 +8,7 @@ import { DjBoard } from "@/components/panel/board/DjBoard";
 import { CopyLinkButton } from "@/components/panel/CopyLinkButton";
 import { EventForm } from "@/components/panel/EventForm";
 import { EventStatusControls } from "@/components/panel/EventStatusControls";
+import { ExportControls } from "@/components/panel/ExportControls";
 import { QrCode } from "@/components/panel/QrCode";
 import { formatEventDate } from "@/components/panel/StatusBadge";
 import { eventPosterPath } from "@/lib/app";
@@ -23,7 +24,7 @@ export const metadata: Metadata = { title: "Tablica na żywo | ZagrajTo" };
 const card = "rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900";
 const label = "text-xs font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400";
 
-/** Event management around the board: details, QR for guests, start/close and edit. */
+/** Event management around the board: details, QR for guests, start/close, edit and export of the list. */
 function ManageEvent({ event }: { event: DjEvent }) {
   const guestUrl = buildGuestEventUrl(event.code);
   return (
@@ -92,6 +93,8 @@ function ManageEvent({ event }: { event: DjEvent }) {
           />
         </div>
       </section>
+
+      <ExportControls eventId={event.id} />
     </div>
   );
 }

@@ -1,8 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { createEventRecord, guestPage, registerDj } from "./guest-helpers";
+import { clickAndWaitForSave, createEventRecord, guestPage, registerDj } from "./guest-helpers";
 
 const TABLET_LANDSCAPE = { width: 1180, height: 820 };
+// Board actions are optimistic: the card moves before the server answers. Steps that rely on server state wait for these.
+const STATUS_POST = /^\/api\/requests\/[^/]+\/status$/;
+const REQUESTS_OPEN_POST = /^\/api\/events\/[^/]+\/requests-open$/;
 
 async function addTrack(page: Page, query: string, title: string, artist: string) {
   await page.getByLabel("Szukaj utworu").fill(query);
@@ -52,10 +55,10 @@ test("guest adds → DJ sees it with votes → Zagrane → guest sees it in Zagr
   expect(box?.height).toBeGreaterThanOrEqual(48);
 
   // Accept, then Zagrane; acting on a card ends its highlight.
-  await accept.click();
+  await clickAndWaitForSave(page, accept, STATUS_POST);
   await expect(card(page, "ACCEPTED", "Dancing Queen")).toBeVisible();
   await expect(card(page, "ACCEPTED", "Dancing Queen")).not.toHaveAttribute("data-new", "true");
-  await card(page, "ACCEPTED", "Dancing Queen").getByRole("button", { name: /^Zagrane/ }).click();
+  await clickAndWaitForSave(page, card(page, "ACCEPTED", "Dancing Queen").getByRole("button", { name: /^Zagrane/ }), STATUS_POST);
   await expect(card(page, "PLAYED", "Dancing Queen")).toBeVisible();
 
   // Stored for real (survives a reload); playedAt was set.
@@ -78,19 +81,19 @@ test("guest adds → DJ sees it with votes → Zagrane → guest sees it in Zagr
   expect(afterReAdd.columns.PLAYED[0].votes).toBe(2);
 
   // Reject Szampan: it disappears for guests and sits in the collapsed "Odrzucone".
-  await card(page, "PENDING", "Szampan").getByRole("button", { name: /^Odrzuć/ }).click();
+  await clickAndWaitForSave(page, card(page, "PENDING", "Szampan").getByRole("button", { name: /^Odrzuć/ }), STATUS_POST);
   await expect(card(page, "REJECTED", "Szampan")).toBeHidden();
   await column(page, "REJECTED").locator("summary").click();
   await expect(card(page, "REJECTED", "Szampan")).toBeVisible();
   await expect(guestA.page.getByTestId("guest-list")).not.toContainText("Szampan", { timeout: 10_000 });
   // "Cofnij do nowych" brings it back.
-  await card(page, "REJECTED", "Szampan").getByRole("button", { name: /^Cofnij do nowych/ }).click();
+  await clickAndWaitForSave(page, card(page, "REJECTED", "Szampan").getByRole("button", { name: /^Cofnij do nowych/ }), STATUS_POST);
   await expect(card(page, "PENDING", "Szampan")).toBeVisible();
 
   // The "Zgłoszenia otwarte" switch closes requests for guests.
   const toggle = page.getByRole("switch", { name: /Zgłoszenia otwarte/ });
   await expect(toggle).toHaveAttribute("aria-checked", "true");
-  await toggle.click();
+  await clickAndWaitForSave(page, toggle, REQUESTS_OPEN_POST);
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await expect(guestA.page.getByText("DJ chwilowo nie przyjmuje nowych życzeń.")).toBeVisible({ timeout: 10_000 });
   await page.reload();

@@ -46,3 +46,19 @@ export async function guestPage(browser: Browser, searches: string[] = []) {
   });
   return { context, page };
 }
+
+/**
+ * Clicks something whose effect the page shows optimistically, then waits until the server has stored it
+ * (the matching POST/DELETE answered 2xx). Use it whenever later steps rely on server state (reload, API, export).
+ */
+export async function clickAndWaitForSave(
+  page: Page,
+  target: { click: () => Promise<void> },
+  path: RegExp,
+  method: "POST" | "DELETE" = "POST",
+) {
+  const saved = page.waitForResponse((response) => response.request().method() === method && path.test(new URL(response.url()).pathname));
+  await target.click();
+  const response = await saved;
+  expect(response.ok(), `${method} ${response.url()} → ${response.status()}`).toBe(true);
+}

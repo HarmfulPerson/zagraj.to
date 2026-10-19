@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { createEventRecord, guestPage, registerDj, setEventStatus, TRACKS } from "./guest-helpers";
+import { clickAndWaitForSave, createEventRecord, guestPage, registerDj, setEventStatus, TRACKS } from "./guest-helpers";
 
 /** Adds a track from the (mocked) search results as this guest. */
 async function addTrack(page: Page, query: string, title: string, artist: string) {
@@ -9,6 +9,9 @@ async function addTrack(page: Page, query: string, title: string, artist: string
   await expect(page.getByTestId("guest-notice")).toContainText(`Dodano „${title}”`);
   await page.getByLabel("Wyczyść wyszukiwanie").click();
 }
+
+// Liking is optimistic: the heart flips before the server answers.
+const VOTE_PATH = /^\/api\/requests\/[^/]+\/vote$/;
 
 const row = (page: Page, title: string) => page.getByTestId("guest-request").filter({ hasText: title });
 const heart = (page: Page, title: string) => row(page, title).getByTestId("vote-button");
@@ -37,9 +40,13 @@ test("guests like tracks; another guest sees the votes after polling; the list r
   await b.goto(`/e/${event.code}`);
   await expect(row(b, "Dancing Queen")).not.toContainText("Twoje");
   await expect(heart(b, "Dancing Queen")).toHaveAttribute("aria-pressed", "false");
+  const liked = b.waitForResponse((r) => r.request().method() === "POST" && VOTE_PATH.test(new URL(r.url()).pathname));
   await heart(b, "Dancing Queen").click();
+  // Optimistic: visible before the server answers…
   await expect(heart(b, "Dancing Queen")).toHaveAttribute("aria-pressed", "true");
   await expect(heart(b, "Dancing Queen").getByTestId("vote-count")).toHaveText("2");
+  // …and stored for real before anything relies on server state.
+  expect((await liked).ok()).toBe(true);
 
   // A sees B's like after polling (every 3 s), and the list re-sorts by votes.
   await expect(heart(a, "Dancing Queen").getByTestId("vote-count")).toHaveText("2", { timeout: 10_000 });
@@ -51,7 +58,7 @@ test("guests like tracks; another guest sees the votes after polling; the list r
   await expect(heart(b, "Dancing Queen")).toHaveAttribute("aria-pressed", "true");
 
   // Unlike: back to 1 for both guests.
-  await heart(b, "Dancing Queen").click();
+  await clickAndWaitForSave(b, heart(b, "Dancing Queen"), VOTE_PATH, "DELETE");
   await expect(heart(b, "Dancing Queen").getByTestId("vote-count")).toHaveText("1");
   await expect(heart(a, "Dancing Queen").getByTestId("vote-count")).toHaveText("1", { timeout: 10_000 });
   await expect.poll(() => titles(a), { timeout: 10_000 }).toEqual(["Szampan", "Dancing Queen"]);
