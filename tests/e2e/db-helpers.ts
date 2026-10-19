@@ -23,13 +23,18 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
   }
 }
 
+/** Prisma's SQLite DateTime format (ISO with an explicit +00:00 offset). */
+const sqliteDate = (date: Date) => date.toISOString().replace("Z", "+00:00");
+
 /**
- * Sets a DJ's plan directly in the database. Billing (Stripe) is ticket 012; until then this is the only way to get a
- * Pro account in e2e. The plan is read per request, so the logged-in session sees the change on the next request.
+ * Sets a DJ's plan (and optionally the renewal date) directly in the database. e2e runs without Stripe keys, so this
+ * is how tests get a Pro account. The plan is read per request, so the logged-in session sees it on the next request.
  */
-export function setDjPlan(email: string, plan: "FREE" | "PRO"): void {
+export function setDjPlan(email: string, plan: "FREE" | "PRO", planRenewsAt: Date | null = null): void {
   withDb((db) => {
-    const { changes } = db.prepare(`UPDATE "User" SET "plan" = ? WHERE "email" = ?`).run(plan, email);
+    const { changes } = db
+      .prepare(`UPDATE "User" SET "plan" = ?, "planRenewsAt" = ? WHERE "email" = ?`)
+      .run(plan, planRenewsAt ? sqliteDate(planRenewsAt) : null, email);
     if (changes !== 1) throw new Error(`setDjPlan: no user ${email}`);
   });
 }
@@ -46,7 +51,7 @@ export function seedRequests(code: string, count: number): void {
     const base = Date.now() - count * 1000;
     db.transaction(() => {
       for (let i = 0; i < count; i++) {
-        const createdAt = new Date(base + i * 1000).toISOString().replace("Z", "+00:00");
+        const createdAt = sqliteDate(new Date(base + i * 1000));
         insert.run(randomUUID(), event.id, `seed-${i}`, `Utwór ${i + 1}`, "Wykonawca", `seed-guest-${i}`, createdAt);
       }
     })();
