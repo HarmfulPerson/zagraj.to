@@ -179,6 +179,8 @@ export function GuestEventLive({ code, name, maxRequests, initialUsed, initialLi
     if (response.status === 429) setUsed((current) => Math.max(current, maxRequests));
     // Requests closed or the party ended meanwhile: the fresh list switches to the banner or the page to its message.
     if (response.status === 403) void mutateList();
+    // Already played (or rejected): refresh, so a played track shows up in "Zagrane".
+    if (response.status === 409) void mutateList();
     show("error", message);
   }
 

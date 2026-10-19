@@ -1,7 +1,10 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import type { EventStatus } from "@/lib/event-status";
+import { compareQueue } from "@/lib/queue-order";
 import { findGuestEvent } from "@/lib/requests";
+
+export { compareQueue };
 
 /** How many recently played tracks guests see in the "Zagrane" section. */
 export const PLAYED_LIST_LIMIT = 20;
@@ -65,14 +68,6 @@ function toItem(row: GuestListRow, status: GuestVisibleStatus, guestId: string |
   };
 }
 
-/** Queue order: most votes first; ties by the older request first (it waited longer); then by id for stability. */
-export function compareQueue(a: GuestListRow, b: GuestListRow): number {
-  return (
-    b.voteCount - a.voteCount ||
-    a.createdAt.getTime() - b.createdAt.getTime() ||
-    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-  );
-}
 
 /** Played order: most recently played first (a missing `playedAt` falls back to `createdAt`). */
 export function comparePlayed(a: GuestListRow, b: GuestListRow): number {

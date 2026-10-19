@@ -4,97 +4,87 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { changeEventStatusAction, updateEventAction } from "@/app/panel/event-actions";
+import { DjBoard } from "@/components/panel/board/DjBoard";
 import { CopyLinkButton } from "@/components/panel/CopyLinkButton";
 import { EventForm } from "@/components/panel/EventForm";
 import { EventStatusControls } from "@/components/panel/EventStatusControls";
 import { QrCode } from "@/components/panel/QrCode";
-import { formatEventDate, StatusBadge } from "@/components/panel/StatusBadge";
+import { formatEventDate } from "@/components/panel/StatusBadge";
 import { eventPosterPath } from "@/lib/app";
-import { PANEL_PATH, requireDj } from "@/lib/auth";
+import { requireDj } from "@/lib/auth";
+import { buildBoardColumns, loadBoardRows } from "@/lib/dj-board";
 import { formatRequestCount } from "@/lib/event-status";
 import { eventIdSchema } from "@/lib/event-validation";
-import { findDjEvent } from "@/lib/events";
+import { type DjEvent, findDjEvent } from "@/lib/events";
 import { buildGuestEventUrl } from "@/lib/guest-url";
 
-export const metadata: Metadata = { title: "Wydarzenie | ZagrajTo" };
+export const metadata: Metadata = { title: "Tablica na żywo | ZagrajTo" };
 
-const card = "rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6 dark:border-zinc-800 dark:bg-zinc-900";
+const card = "rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900";
+const label = "text-xs font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400";
 
-async function EventDetails({ id }: { id: string }) {
-  const dj = await requireDj();
-  const parsedId = eventIdSchema.safeParse(id);
-  // Someone else's event looks exactly like a missing one.
-  const event = parsedId.success ? await findDjEvent(dj.id, parsedId.data) : null;
-  if (!event) notFound();
+/** Event management around the board: details, QR for guests, start/close and edit. */
+function ManageEvent({ event }: { event: DjEvent }) {
   const guestUrl = buildGuestEventUrl(event.code);
-
   return (
-    <>
-      <section className={card}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <h1 className="min-w-0 text-2xl font-semibold tracking-tight break-words text-zinc-900 sm:text-3xl dark:text-zinc-50">
-            {event.name}
-          </h1>
-          <StatusBadge status={event.status} />
-        </div>
-        <dl className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <div className="col-span-2 sm:col-span-1">
-            <dt className="text-xs font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">Kod dla gości</dt>
-            <dd data-testid="event-code" className="mt-1 font-mono text-3xl font-bold tracking-[0.2em] text-violet-700 dark:text-violet-400">
-              {event.code}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">Data</dt>
-            <dd className="mt-1 text-base font-medium text-zinc-900 dark:text-zinc-100">{formatEventDate(event.startsAt)}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">Limit na gościa</dt>
-            <dd className="mt-1 text-base font-medium text-zinc-900 dark:text-zinc-100">{formatRequestCount(event.maxRequestsPerGuest)}</dd>
-          </div>
-        </dl>
-      </section>
-
+    <div className="grid gap-3 lg:grid-cols-3">
       <section className={card} aria-labelledby="qr-heading">
-        <h2 id="qr-heading" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Kod QR dla gości</h2>
-        <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-center">
+        <h2 id="qr-heading" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+          Kod QR dla gości
+        </h2>
+        <div className="mt-3 flex items-start gap-4">
           <QrCode
             value={guestUrl}
             label={`Kod QR prowadzący do strony wydarzenia ${event.name}`}
             testId="event-qr"
-            className="w-44 shrink-0 self-center overflow-hidden rounded-xl border border-zinc-200 bg-white p-1 sm:self-auto dark:border-zinc-700"
+            className="w-32 shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-white p-1 dark:border-zinc-700"
           />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Goście skanują kod telefonem albo otwierają link i od razu mogą proponować piosenki.
-            </p>
-            <p className="mt-3 text-xs font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">Link dla gości</p>
-            <p data-testid="guest-url" className="mt-1 font-mono text-sm break-all text-zinc-900 dark:text-zinc-100">
-              {guestUrl}
-            </p>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              <CopyLinkButton url={guestUrl} />
-              <Link
-                href={eventPosterPath(event.id)}
-                className="flex min-h-12 items-center justify-center rounded-lg bg-violet-700 px-5 text-base font-semibold text-white shadow-sm transition hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700"
-              >
-                Plakat do druku
-              </Link>
+          <dl className="min-w-0 flex-1 space-y-2">
+            <div>
+              <dt className={label}>Kod dla gości</dt>
+              <dd data-testid="event-code" className="font-mono text-2xl font-bold tracking-[0.2em] text-violet-700 dark:text-violet-400">
+                {event.code}
+              </dd>
             </div>
-          </div>
+            <div>
+              <dt className={label}>Data</dt>
+              <dd className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{formatEventDate(event.startsAt)}</dd>
+            </div>
+            <div>
+              <dt className={label}>Limit na gościa</dt>
+              <dd className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{formatRequestCount(event.maxRequestsPerGuest)}</dd>
+            </div>
+          </dl>
+        </div>
+        <p className={`${label} mt-3`}>Link dla gości</p>
+        <p data-testid="guest-url" className="mt-1 font-mono text-sm break-all text-zinc-900 dark:text-zinc-100">
+          {guestUrl}
+        </p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+          <CopyLinkButton url={guestUrl} />
+          <Link
+            href={eventPosterPath(event.id)}
+            className="flex min-h-12 items-center justify-center rounded-lg bg-violet-700 px-5 text-base font-semibold text-white shadow-sm transition hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700"
+          >
+            Plakat do druku
+          </Link>
         </div>
       </section>
 
       <section className={card} aria-labelledby="status-heading">
-        <h2 id="status-heading" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Status wydarzenia</h2>
+        <h2 id="status-heading" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+          Status wydarzenia
+        </h2>
         <div className="mt-2">
           <EventStatusControls key={event.status} status={event.status} action={changeEventStatusAction.bind(null, event.id)} />
         </div>
       </section>
 
       <section className={card} aria-labelledby="edit-heading">
-        <h2 id="edit-heading" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Edycja</h2>
-        <div className="mt-4">
+        <h2 id="edit-heading" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+          Edycja
+        </h2>
+        <div className="mt-3">
           <EventForm
             mode="edit"
             action={updateEventAction.bind(null, event.id)}
@@ -102,28 +92,48 @@ async function EventDetails({ id }: { id: string }) {
           />
         </div>
       </section>
-    </>
+    </div>
   );
 }
 
-function DetailsSkeleton() {
+async function EventBoard({ id }: { id: string }) {
+  const dj = await requireDj();
+  const parsedId = eventIdSchema.safeParse(id);
+  // Someone else's event looks exactly like a missing one.
+  const event = parsedId.success ? await findDjEvent(dj.id, parsedId.data) : null;
+  if (!event) notFound();
+  const board = {
+    event: { id: event.id, status: event.status, requestsOpen: event.requestsOpen },
+    columns: buildBoardColumns(await loadBoardRows(event.id)),
+  };
+
   return (
-    <div className="space-y-4" aria-hidden>
-      <div className="h-40 animate-pulse rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
-      <div className="h-32 animate-pulse rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
+    <DjBoard eventId={event.id} name={event.name} code={event.code} initialBoard={board} manage={<ManageEvent event={event} />} />
+  );
+}
+
+function BoardSkeleton() {
+  return (
+    <div aria-hidden>
+      <div className="h-16 animate-pulse rounded-2xl bg-zinc-900" />
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        {[0, 1, 2].map((column) => (
+          <div key={column} className="space-y-2">
+            <div className="h-6 w-32 animate-pulse rounded bg-zinc-900" />
+            <div className="h-36 animate-pulse rounded-2xl bg-zinc-900" />
+            <div className="h-36 animate-pulse rounded-2xl bg-zinc-900" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 export default function EventPage({ params }: PageProps<"/panel/wydarzenia/[id]">) {
   return (
-    <div className="mx-auto max-w-3xl">
-      <Link href={PANEL_PATH} className="inline-flex min-h-11 items-center text-sm font-medium text-violet-700 hover:underline dark:text-violet-400">
-        ← Wszystkie wydarzenia
-      </Link>
-      <div className="mt-2 space-y-4">
-        <Suspense fallback={<DetailsSkeleton />}>{params.then(({ id }) => <EventDetails id={id} />)}</Suspense>
-      </div>
+    // `dj-board-theme` turns the whole panel dark while the board is shown (see globals.css).
+    <div className="dj-board-theme">
+      <Suspense fallback={<BoardSkeleton />}>{params.then(({ id }) => <EventBoard id={id} />)}</Suspense>
     </div>
   );
 }

@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* Dark mode follows the system, except on the DJ's live board (/panel/wydarzenia/[id]): it is always dark,
+   for a dark club, and that includes the panel header and the event management around it. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    @slot;
+  }
+  &:where(body:has(.dj-board-theme) *) {
+    @slot;
+  }
+}
+
+/* Panel layout tweaks while the live board is on the page (wider, tighter). */
+@custom-variant board (&:where(body:has(.dj-board-theme) *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -58,9 +72,11 @@ body {
   }
 }
 
-/* Guest pages (/e/[code]) are always dark, also behind overscroll on phones. */
+/* Guest pages (/e/[code]) and the DJ board are always dark, also behind overscroll on phones. */
 html:has(.guest-theme),
-body:has(.guest-theme) {
+body:has(.guest-theme),
+html:has(.dj-board-theme),
+body:has(.dj-board-theme) {
   background: #09090b;
   color-scheme: dark;
 }

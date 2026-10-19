@@ -125,6 +125,27 @@ describe("addRequest: track the DJ rejected", () => {
   });
 });
 
+describe("addRequest: track already played", () => {
+  it("answers ALREADY_PLAYED without a vote, for the author and for other guests", async () => {
+    const event = await createEvent();
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("101") }, prisma);
+    await prisma.request.updateMany({ where: { eventId: event.id }, data: { status: "PLAYED", playedAt: new Date() } });
+
+    for (const guestId of [GUEST_A, GUEST_B]) {
+      expect(await addRequest({ code: event.code, guestId, track: track("101") }, prisma)).toEqual({ ok: false, reason: "ALREADY_PLAYED" });
+    }
+    expect(await prisma.request.count({ where: { eventId: event.id } })).toBe(1);
+    expect(await prisma.vote.count()).toBe(1);
+  });
+
+  it("votes again once the DJ takes the track back from Zagrane", async () => {
+    const event = await createEvent();
+    await addRequest({ code: event.code, guestId: GUEST_A, track: track("101") }, prisma);
+    await prisma.request.updateMany({ where: { eventId: event.id }, data: { status: "PENDING", playedAt: null } });
+    expect(await addRequest({ code: event.code, guestId: GUEST_B, track: track("101") }, prisma)).toMatchObject({ ok: true, outcome: "VOTED" });
+  });
+});
+
 describe("addRequest: maxRequestsPerGuest", () => {
   it("refuses a new track above the limit", async () => {
     const event = await createEvent({ maxRequestsPerGuest: 2 });

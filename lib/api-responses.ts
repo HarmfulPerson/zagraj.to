@@ -41,3 +41,9 @@ export function isJsonContentType(request: Request): boolean {
 export function requireJsonContentType(request: Request): Response | null {
   return isJsonContentType(request) ? null : Response.json({ error: "UNSUPPORTED_MEDIA_TYPE" }, { status: 415 });
 }
+
+/** Marks a per-user answer as never to be stored by a browser or a proxy (`Cache-Control: private, no-store`). */
+export function noStore(response: Response): Response {
+  response.headers.set("cache-control", "private, no-store");
+  return response;
+}

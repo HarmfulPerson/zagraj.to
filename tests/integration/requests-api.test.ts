@@ -161,6 +161,18 @@ describe("POST /api/events/[code]/requests", () => {
     expect(await prisma.vote.count()).toBe(1);
   });
 
+  it("answers 409 ALREADY_PLAYED for a track that was already played, without a vote (like the vote endpoint)", async () => {
+    const event = await createEvent();
+    await post(event.code, { track: szampan });
+    await prisma.request.updateMany({ where: { eventId: event.id }, data: { status: "PLAYED", playedAt: new Date() } });
+
+    const res = await post(event.code, { track: szampan }, GUEST_B);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "ALREADY_PLAYED", message: "Ten utwór został już zagrany." });
+    expect(await prisma.vote.count()).toBe(1);
+    expect(await prisma.request.count()).toBe(1);
+  });
+
   it("requires Content-Type: application/json (415), so cross-site forms cannot post", async () => {
     const event = await createEvent();
     for (const contentType of [null, "text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"]) {

@@ -15,7 +15,7 @@ async function DjMenu() {
       <form action={logoutAction}>
         <button
           type="submit"
-          className="min-h-11 rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          className="min-h-11 rounded-lg border board:min-h-9 board:px-3 border-zinc-300 px-4 text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
           Wyloguj się
         </button>
@@ -27,8 +27,8 @@ async function DjMenu() {
 export default function PanelLayout({ children }: LayoutProps<"/panel">) {
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 print:bg-white dark:bg-zinc-950">
-      <header className="print:hidden border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex min-h-16 max-w-5xl items-center justify-between gap-4 px-4">
+      <header className="print:hidden [@media(max-height:500px)]:board:hidden border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="mx-auto flex min-h-16 max-w-5xl items-center justify-between gap-4 px-4 board:min-h-12 board:max-w-none board:px-3 sm:board:px-5">
           <Link href="/panel" className="text-xl font-bold tracking-tight text-violet-700 dark:text-violet-400">
             {APP_NAME}
           </Link>
@@ -37,7 +37,7 @@ export default function PanelLayout({ children }: LayoutProps<"/panel">) {
           </Suspense>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 print:max-w-none print:p-0">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 board:max-w-none board:px-3 board:py-3 sm:board:px-5 sm:board:py-4 print:max-w-none print:p-0">{children}</main>
     </div>
   );
 }

@@ -107,6 +107,8 @@ export type AddRequestResult =
   | { ok: false; reason: "REQUESTS_CLOSED" }
   /** The DJ rejected this track. Answered neutrally, without a vote, so guests cannot learn what was rejected. */
   | { ok: false; reason: "TRACK_UNAVAILABLE" }
+  /** The track has already been played tonight. No vote, consistent with the vote endpoint (409 for PLAYED). */
+  | { ok: false; reason: "ALREADY_PLAYED" }
   | { ok: false; reason: "LIMIT_REACHED"; maxRequests: number };
 
 function isUniqueViolation(error: unknown): boolean {
@@ -161,6 +163,7 @@ async function loadRequest(id: string, db: PrismaClient): Promise<GuestRequest> 
  * - the event must be LIVE with requests open (otherwise `EVENT_NOT_LIVE` / `REQUESTS_CLOSED`);
  * - a track already on the list gets the guest's vote instead of a duplicate, and does not use up the guest's limit;
  * - a track the DJ rejected gets no vote and a neutral `TRACK_UNAVAILABLE` (REJECTED never reaches a guest);
+ * - a track already played gets no vote and `ALREADY_PLAYED` (it is in the guest's "Zagrane" section anyway);
  * - a new track creates a PENDING request plus the guest's vote, unless the guest reached `maxRequestsPerGuest`.
  * Expects `track` validated by `trackInputSchema` and `guestId` validated by `isValidGuestId`.
  */
@@ -183,10 +186,11 @@ export async function addRequest(
     maxRequests,
   });
 
-  const voteForExisting = async (existing: { id: string; status: string }): Promise<AddRequestResult> =>
-    existing.status === "REJECTED"
-      ? { ok: false, reason: "TRACK_UNAVAILABLE" }
-      : done(await voteFor(existing.id, guestId, db), existing.id);
+  const voteForExisting = async (existing: { id: string; status: string }): Promise<AddRequestResult> => {
+    if (existing.status === "REJECTED") return { ok: false, reason: "TRACK_UNAVAILABLE" };
+    if (existing.status === "PLAYED") return { ok: false, reason: "ALREADY_PLAYED" };
+    return done(await voteFor(existing.id, guestId, db), existing.id);
+  };
 
   const existing = await db.request.findUnique({
     where: { eventId_trackId: { eventId: event.id, trackId: track.id } },
